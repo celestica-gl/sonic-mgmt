@@ -3,11 +3,9 @@ import os
 import traceback
 import ipaddr as ipaddress
 import csv
-import string
 from operator import itemgetter
 from itertools import groupby
 import yaml
-from collections import defaultdict
 
 DOCUMENTATION = '''
 module: test_facts.py
@@ -30,7 +28,7 @@ options:
 
 EXAMPLES = '''
     Testbed CSV file example:
-        # conf-name,group-name,topo,ptf_image_name,ptf_ip,ptf_ipv6,server,vm_base,dut,comment
+        # conf-name,group-name,topo,ptf_image_name,ptf_ip,server,vm_base,dut,comment
         ptf1-m,ptf1,ptf32,docker-ptf-sai-mlnx,10.255.0.188/24,server_1,,str-msn2700-01,Tests ptf
         vms-t1,vms1-1,t1,docker-ptf-sai-mlnx,10.255.0.178/24,server_1,VM0100,str-msn2700-01,Tests vms
         vms-t1-lag,vms1-1,t1-lag,docker-ptf-sai-mlnx,10.255.0.178/24,server_1,VM0100,str-msn2700-01,Tests vms
@@ -101,39 +99,32 @@ class ParseTestbedTopoinfo():
     Parse the CSV file used to describe whole testbed info
     Please refer to the example of the CSV file format
     CSV file first line is title
-    The topology name in title is using conf-name
+    The topology name in title is using uniq-name | conf-name
     '''
     def __init__(self, testbed_file):
         self.testbed_filename = testbed_file
-        self.testbed_topo = defaultdict()
+        self.testbed_topo = {}
 
     def read_testbed_topo(self):
-        CSV_FIELDS = ('conf-name', 'group-name', 'topo', 'ptf_image_name', 'ptf', 'ptf_ip', 'ptf_ipv6', 'server', 'vm_base', 'dut', 'comment')
         with open(self.testbed_filename) as f:
-            topo = csv.DictReader(f, fieldnames=CSV_FIELDS, delimiter=',')
-
-            # Validate all field are in the same order and are present
-            header = next(topo)
-            for field in CSV_FIELDS:
-                assert header[field].replace('#', '').strip() == field
-
+            topo = csv.DictReader(f)
             for line in topo:
-                if line['conf-name'].lstrip().startswith('#'):
-                    ### skip comment line
-                    continue
-                if line['ptf_ip']:
-                    ptfaddress = ipaddress.IPNetwork(line['ptf_ip'])
-                    line['ptf_ip'] = str(ptfaddress.ip)
-                    line['ptf_netmask'] = str(ptfaddress.netmask)
-                if line['ptf_ipv6']:
-                    ptfaddress = ipaddress.IPNetwork(line['ptf_ipv6'])
-                    line['ptf_ipv6'] = str(ptfaddress.ip)
-                    line['ptf_netmask_v6'] = str(ptfaddress.netmask)
-
-                line['duts'] = line['dut'].translate(string.maketrans("", ""), "[] ").split(';')
-                del line['dut']
-
-                self.testbed_topo[line['conf-name']] = line
+                tb_prop = {}
+                name = ''
+                for key in line:
+                    if ('uniq-name' in key or 'conf-name' in key) and '#' in line[key]:
+                        ### skip comment line
+                        continue
+                    elif 'uniq-name' in key or 'conf-name' in key:
+                        name = line[key]
+                    elif 'ptf_ip' in key and line[key]:
+                        ptfaddress = ipaddress.IPNetwork(line[key])
+                        tb_prop['ptf_ip'] = str(ptfaddress.ip)
+                        tb_prop['ptf_netmask'] = str(ptfaddress.netmask)
+                    else:
+                        tb_prop[key] = line[key]
+                if name:
+                    self.testbed_topo[name] = tb_prop
         return
 
     def get_testbed_info(self, testbed_name):

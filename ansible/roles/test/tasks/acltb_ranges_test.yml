@@ -45,18 +45,13 @@
   set_fact:
     alias_reverse_map: "{{ lookup('file', 'roles/sonicv2/files/ssw/{{ sonic_hwsku }}/alias_reverse_map.json') | from_json }}"
 
-- include_tasks: roles/test/files/tools/loganalyzer/loganalyzer_init.yml
+- include: roles/test/files/tools/loganalyzer/loganalyzer_init.yml
   vars:
     tests_location: "{{ 'roles/test/tasks' }}"
 
 # Outer block to execute laganalizer in always block
 - block:
   # Perform the test: generate and apply acl jsons
-
-  - include_tasks: add_container_to_inventory.yml
-    vars:
-      container_name: swss
-
   - block:
     - name: Copy JSON configs into docker filesystem
       template: src={{ item }}.j2 dest=/tmp/{{ item }}.json
@@ -82,10 +77,12 @@
       with_items:
         - "{{ acltb_configs[::-1] }}"
 
-    delegate_to: "{{ ansible_host }}_swss"
+    vars:
+      ansible_shell_type: docker
+      ansible_python_interpreter: docker exec -i swss python
 
   always:
-    - include_tasks: roles/test/files/tools/loganalyzer/loganalyzer_analyze.yml
+    - include: roles/test/files/tools/loganalyzer/loganalyzer_analyze.yml
       vars:
         tests_location: "{{ 'roles/test/tasks' }}"
 
@@ -102,6 +99,6 @@
       fail: msg="{{ errors_found.stdout }} errors found while running {{ testname }} test. Please see {{ test_out_dir }}/{{ result_file }}"
       when: errors_found.stdout != "0"
 
-    - include_tasks: roles/test/files/tools/loganalyzer/loganalyzer_end.yml
+    - include: roles/test/files/tools/loganalyzer/loganalyzer_end.yml
       vars:
         tests_location: "{{ 'roles/test/tasks' }}"

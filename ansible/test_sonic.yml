@@ -14,6 +14,8 @@
 
 
 - hosts: sonic
+  vars_files:
+    - vars/docker_registry.yml
   roles:
     - { role: test, scope: 'sonic' }
   force_handlers: true

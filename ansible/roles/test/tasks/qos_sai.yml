@@ -9,21 +9,13 @@
 - set_fact:
     disable_test: "{{disable_test | default('true') | bool}}"
 
-- include_tasks: add_container_to_inventory.yml
-  vars:
-    container_name: "{{ item }}"
-  with_items:
-    - "lldp"
-    - "bgp"
-    - "syncd"
-
 - block:
     - name: Getting minigraph facts
       minigraph_facts: host={{inventory_hostname}}
       become: no
 
     - name: Get ports info.
-      include_tasks: roles/test/tasks/qos_get_ports.yml
+      include: roles/test/tasks/qos_get_ports.yml
 
     - name: Check if lossless buffer profile is derived
       fail: msg="Lossless Buffer profile could not be retreived"
@@ -56,7 +48,9 @@
     - name: Ensure LLDP Daemon stopped
       become: yes
       supervisorctl: state=stopped name={{item}}
-      delegate_to: "{{ ansible_host }}_lldp"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i lldp python
       with_items:
         - lldpd
         - lldp-syncd
@@ -64,7 +58,9 @@
     - name: Ensure BGP Daemon stopped
       become: yes
       supervisorctl: state=stopped name=bgpd
-      delegate_to: "{{ ansible_host }}_bgp"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i bgp python
     
     - name: Add iptables rule to drop BGP SYN Packet from peer so that we do not ACK back. Add at top so existing rules don't have precedence over it.
       shell: "iptables -I INPUT 1 -j DROP -p tcp --destination-port bgp"
@@ -78,14 +74,18 @@
 
     - name: Deploy script to DUT/syncd
       copy: src=roles/test/files/mlnx/packets_aging.py dest=/root/packets_aging.py
-      delegate_to: "{{ ansible_host }}_syncd"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i syncd python
       when: minigraph_hwsku is defined and minigraph_hwsku in mellanox_hwskus
 
     - name: Disable Mellanox packet aging
       shell: python /root/packets_aging.py disable
       register: result
       failed_when: result.stderr != ''
-      delegate_to: "{{ ansible_host }}_syncd"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i syncd python
       when: minigraph_hwsku is defined and minigraph_hwsku in mellanox_hwskus
 
     - name: copy ptf tests
@@ -101,7 +101,7 @@
       delegate_to: "{{ptf_host}}"
 
     - name: Init PTF base test parameters
-      set_fact:
+      set_fact: 
         ptf_base_params:
         - router_mac={% if testbed_type not in ['t0', 't0-64', 't0-116'] %}'{{ansible_Ethernet0['macaddress']}}'{% else %}''{% endif %}
         - server='{{ansible_host}}'
@@ -109,7 +109,7 @@
         - sonic_asic_type='{{sonic_asic_type}}'
 
     # Unpause all paused port
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: release all paused ports
         test_path: sai_qos_tests.ReleaseAllPorts
@@ -124,7 +124,7 @@
     - debug:
         var: arp_entries
 
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: populate arp on all ports
         test_path: sai_qos_tests.ARPpopulate
@@ -139,23 +139,8 @@
         - src_port_ip='{{src_port_ip}}'
       when: testbed_type in ['t0', 't0-64', 't0-116'] or arp_entries.stdout.find('incomplete') == -1
 
-    - include_tasks: qos_sai_ptf.yml
-      vars:
-        test_name: populate arp on all ports
-        test_path: sai_qos_tests.ARPpopulatePTF
-        test_params:
-        - dst_port_id='{{dst_port_id}}'
-        - dst_port_ip='{{dst_port_ip}}'
-        - dst_port_2_id='{{dst_port_2_id}}'
-        - dst_port_2_ip='{{dst_port_2_ip}}'
-        - dst_port_3_id='{{dst_port_3_id}}'
-        - dst_port_3_ip='{{dst_port_3_ip}}'
-        - src_port_id='{{src_port_id}}'
-        - src_port_ip='{{src_port_ip}}'
-      when: testbed_type in ['ptf32', 'ptf64']
-
     # XOFF limit
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: xoff limit ptf test dscp = {{qp_sc.xoff_1.dscp}}, ecn = {{qp_sc.xoff_1.ecn}}
         test_path: sai_qos_tests.PFCtest
@@ -173,7 +158,7 @@
         - pkts_num_trig_pfc='{{qp_sc.xoff_1.pkts_num_trig_pfc}}'
         - pkts_num_trig_ingr_drp='{{qp_sc.xoff_1.pkts_num_trig_ingr_drp}}'
 
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: xoff limit ptf test dscp = {{qp_sc.xoff_2.dscp}}, ecn = {{qp_sc.xoff_2.ecn}}
         test_path: sai_qos_tests.PFCtest
@@ -192,7 +177,7 @@
         - pkts_num_trig_ingr_drp='{{qp_sc.xoff_2.pkts_num_trig_ingr_drp}}'
 
     # XON limit
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: xon limit ptf test dscp = {{qp.xon_1.dscp}}, ecn = {{qp.xon_1.ecn}}
         test_path: sai_qos_tests.PFCXonTest
@@ -213,7 +198,7 @@
         - pkts_num_trig_pfc='{{qp.xon_1.pkts_num_trig_pfc}}'
         - pkts_num_dismiss_pfc='{{qp.xon_1.pkts_num_dismiss_pfc}}'
 
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: xon limit ptf test dscp = {{qp.xon_2.dscp}}, ecn = {{qp.xon_2.ecn}}
         test_path: sai_qos_tests.PFCXonTest
@@ -235,7 +220,7 @@
         - pkts_num_dismiss_pfc='{{qp.xon_2.pkts_num_dismiss_pfc}}'
 
     # Headroom pool size
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: headroom pool size ptf test ecn = {{qp_sc.hdrm_pool_size.ecn}}
         test_path: sai_qos_tests.HdrmPoolSizeTest
@@ -257,7 +242,7 @@
             minigraph_hwsku in ['Arista-7060CX-32S-C32', 'Celestica-DX010-C32', 'Arista-7260CX3-D108C8', 'Force10-S6100', 'Arista-7260CX3-Q64']
 
     # Lossy queue
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: Lossy queue, shared buffer dynamic allocation. dscp = {{qp.lossy_queue_1.dscp}}, ecn = {{qp.lossy_queue_1.ecn}}
         test_path: sai_qos_tests.LossyQueueTest
@@ -277,7 +262,7 @@
         - pkts_num_trig_egr_drp='{{qp.lossy_queue_1.pkts_num_trig_egr_drp}}'
 
     # DSCP to queue mapping
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: dscp to queue mapping ptf test
         test_path: sai_qos_tests.DscpMappingPB
@@ -288,7 +273,7 @@
         - src_port_ip='{{src_port_ip}}'
 
     # WRR test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: DWRR
         test_path: sai_qos_tests.WRRtest
@@ -316,7 +301,7 @@
       shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
     # PG shared watermark test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: PG shared watermark test, lossless traffic
         test_path: sai_qos_tests.PGSharedWatermarkTest
@@ -346,7 +331,7 @@
       shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
     # PG shared watermark test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: PG shared watermark test, lossy traffic
         test_path: sai_qos_tests.PGSharedWatermarkTest
@@ -376,7 +361,7 @@
       shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
     # PG headroom watermark test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: PG headroom watermark test
         test_path: sai_qos_tests.PGHeadroomWatermarkTest
@@ -401,7 +386,7 @@
       shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
     # Queue shared watermark test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: Queue shared watermark test, lossless traffic
         test_path: sai_qos_tests.QSharedWatermarkTest
@@ -426,7 +411,7 @@
       shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
     # Queue shared watermark test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: Queue shared watermark test, lossy traffic
         test_path: sai_qos_tests.QSharedWatermarkTest
@@ -449,7 +434,7 @@
       when: not disable_test
 
     # DSCP to pg mapping
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: dscp to pg mapping ptf test
         test_path: sai_qos_tests.DscpToPgMapping
@@ -472,7 +457,7 @@
       command: redis-cli -n 4 HSET "{{lossless_sched_profile}}" weight {{qp.wrr_chg.lossless_weight}}
 
     # WRR test
-    - include_tasks: qos_sai_ptf.yml
+    - include: qos_sai_ptf.yml
       vars:
         test_name: DWRR runtime weight change
         test_path: sai_qos_tests.WRRtest
@@ -505,7 +490,9 @@
     - name: Restore LLDP Daemon
       become: yes
       supervisorctl: state=started name={{item}}
-      delegate_to: "{{ ansible_host }}_lldp"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i lldp python
       with_items:
         - lldpd
         - lldp-syncd
@@ -518,13 +505,14 @@
       shell: "ip6tables -D INPUT -j DROP -p tcp --destination-port bgp"
       become: true
 
-    - name: Enable bgpd
-      become: yes
+    - name: Restore BGP daemon and docker
       supervisorctl: state=started name=bgpd
-      delegate_to: "{{ ansible_host }}_bgp"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i bgp python
       notify:
         - Restart Quagga Daemon
-
+    
     - name: Restore original watermark polling status
       shell: counterpoll watermark {{watermark_status.stdout}}
       when:  watermark_status is defined and (watermark_status.stdout == "enable" or watermark_status.stdout == "disable")
@@ -539,7 +527,9 @@
       shell: python /root/packets_aging.py enable
       register: result
       failed_when: result.stderr != ''
-      delegate_to: "{{ ansible_host }}_syncd"
+      vars:
+        ansible_shell_type: docker
+        ansible_python_interpreter: docker exec -i syncd python
       when: minigraph_hwsku is defined and minigraph_hwsku in mellanox_hwskus
 
     - meta: flush_handlers

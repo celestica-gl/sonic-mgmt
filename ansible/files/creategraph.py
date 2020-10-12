@@ -63,8 +63,7 @@ class LabGraph(object):
         for dev in self.devices:
             hostname = dev.get('Hostname', '')
             managementip = dev.get('ManagementIp', '')
-            devtype = dev['Type'].lower()
-            if hostname and ('fanout' in devtype or 'ixiachassis' in devtype):
+            if hostname and 'fanout' in dev['Type'].lower():
                 ###### Build Management interface IP here, if we create each device indivial minigraph file, we may comment this out 
                 l3inforoot = etree.SubElement(self.dpgroot, 'DevicesL3Info', {'Hostname': hostname})
                 etree.SubElement(l3inforoot, 'ManagementIPInterface', {'Name': 'ManagementIp', 'Prefix': managementip})

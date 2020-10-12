@@ -1,5 +1,3 @@
-- include_vars: "vars/docker_registry.yml"
-
 - include_vars: "roles/test/vars/testcases.yml"
 
 - name: Gathering minigraph facts about the device
@@ -25,11 +23,6 @@
     sonic_asic_type: barefoot
   when: sonic_hwsku in barefoot_hwskus
 
-- name: Set sonic_asic_type fact
-  set_fact:
-    sonic_asic_type: marvell
-  when: sonic_hwsku in marvell_hwskus
-
 ###########################################################################
 ##### run test using ansible tag when no testbedname specified       ######
 ###########################################################################
@@ -37,7 +30,7 @@
     - fail: msg="You didn't provide testbed_name=yourtestbedname, so will run by test by tag. Please specify tests you want to run using --tags"
       when: tags is not defined
 
-    - include_tasks: test_sonic_by_tag.yml
+    - include: test_sonic_by_tag.yml
   when:
     - testbed_name is not defined
 
@@ -61,15 +54,10 @@
 - block:
     - name: Gathering testbed information
       test_facts: testbed_name="{{ testbed_name }}" testbed_file="{{ testbed_file }}"
-      delegate_to: localhost
-
-    - name: Set default dut index
-      set_fact:
-        dut_index: 0
-      when: dut_index is not defined
+      connection: local
 
     - fail: msg="The DUT you are trying to run test does not belongs to this testbed"
-      when: testbed_facts['duts'][dut_index] != inventory_hostname
+      when: testbed_facts['dut'] != inventory_hostname
 
     - name: set testbed_type
       set_fact:
@@ -82,13 +70,10 @@
         vm: "{{ testbed_facts['vm_base'] }}"
       when: "testbed_facts['vm_base'] != ''"
 
-    - fail: msg="cannot find {{ testcase_name }} in available testcases"
-      when: testcases[testcase_name] is not defined
+    - fail: msg="cannot find {{ testcase_name }} in available testcases or is not supported topology of this testbed {{ testbed_name }}"
+      when: (testcase_name is not defined) or (testbed_type not in testcases[testcase_name]['topologies'])
 
-    - fail: msg="{{ testbed_type }} is not supported topology of this testbed {{ testbed_name }}"
-      when: testbed_type not in testcases[testcase_name]['topologies']
-
-    - include_tasks: test_sonic_by_testname.yml
+    - include: test_sonic_by_testname.yml
   when:
     - testbed_name is defined
     - testcase_name is defined

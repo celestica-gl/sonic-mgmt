@@ -4,199 +4,105 @@ This document describes the steps to setup the virtual switch based testbed and 
 
 ## Prepare testbed server
 
-- Install Ubuntu 20.04 amd64 server. To setup a T0 topology, the server needs to have 10GB free memory.
-- Setup internal management network:
-```
-$ git clone https://github.com/Azure/sonic-mgmt
-$ cd sonic-mgmt/ansible
-$ sudo ./setup-management-network.sh
-```
+- Install Ubuntu 18.04 amd64 server. To setup a T0 topology, the server needs to have 10GB free memory.
+- Setup internal management network.
 
-### Use vEOS image
+```
+brctl addbr br1
+ifconfig br1 10.250.0.1/24
+ifconfig br1 up
+```
 
 - Download vEOS image from [arista](https://www.arista.com/en/support/software-download).
-- Copy below image files to `~/veos-vm/images` on your testbed server.
-   - `Aboot-veos-serial-8.0.0.iso`
-   - `vEOS-lab-4.20.15M.vmdk`
+- Copy below image files to ```~/veos-vm/images``` on your testbed server.
+   - ```Aboot-veos-serial-8.0.0.iso```
+   - ```vEOS-lab-4.15.9M.vmdk```
 
-### Use cEOS image (experimental)
-#### Option 1, download and import cEOS image manually
-- Download cEOS image from [arista](https://www.arista.com/en/support/software-download) onto your testbed server
-- Import cEOS image (It will take several minutes to import, so please be patient)
+## Setup docker registry for *PTF* docker
 
+PTF docker is used to send and receive packets to test data plane. 
+
+- Build PTF docker
 ```
-$ docker import cEOS64-lab-4.23.2F.tar.xz ceosimage:4.23.2F
-$ docker images
-REPOSITORY                                     TAG                 IMAGE ID            CREATED             SIZE
-ceosimage                                      4.23.2F             d53c28e38448        2 hours ago         1.82GB
-```
-#### Option 2, download and image cEOS image automatically
-Alternatively, you can host the cEOS image on a http server. Specify `vm_images_url` for downloading the image [here](https://github.com/Azure/sonic-mgmt/blob/master/ansible/group_vars/vm_host/main.yml#L2). If a saskey is required for downloading cEOS image, specify `ceosimage_saskey` in `sonic-mgmt/ansible/vars/azure_storage.yml`.
-
-If you want to skip image downloading when the cEOS image is not imported locally, set `skip_ceos_image_downloading` to `true` in `sonic-mgmt/ansible/group_vars/all/ceos.yml`. Then when cEOS image is not locally imported, the scripts will not try to download it and will fail with an error message. Please use option 1 to download and import the cEOS image manually.
-
-## Download sonic-vs image
-
-- Download sonic-vs image from [here](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/buildimage-vs-image/lastSuccessfulBuild/artifact/target/sonic-vs.img.gz)
-```
-$ wget https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/buildimage-vs-image/lastSuccessfulBuild/artifact/target/sonic-vs.img.gz
+git clone --recursive https://github.com/Azure/sonic-buildimage.git
+make configure PLATFORM=generic
+make target/docker-ptf.gz
 ```
 
-- unzip the image and move it into `~/sonic-vm/images/`
-```
-$ gzip -d sonic-vs.img.gz
-$ mkdir -p ~/sonic-vm/images
-$ mv sonic-vs.img ~/sonic-vm/images
-```
+- Setup [docker registry](https://docs.docker.com/registry/) and upload *docker-ptf* to the docker registry.
 
-## Setup sonic-mgmt docker
-
-### Build or download *sonic-mgmt* docker image
-(Note: downloading or building the sonic-mgmt image is optional)
+## Build or download *sonic-mgmt* docker image
 
 ansible playbook in *sonic-mgmt* repo requires to setup ansible and various dependencies.
-We have built a *sonic-mgmt* docker that installs all dependencies, and you can build
+We have built a *sonic-mgmt* docker that installs all dependencies, and you can build 
 the docker and run ansible playbook inside the docker.
 
 - Build *sonic-mgmt* docker
 ```
-$ git clone --recursive https://github.com/Azure/sonic-buildimage.git
-$ make configure PLATFORM=generic
-$ make target/docker-sonic-mgmt.gz
+git clone --recursive https://github.com/Azure/sonic-buildimage.git
+make configure PLATFORM=generic
+make target/docker-sonic-mgmt.gz
 ```
 
-- Or, download pre-built *sonic-mgmt* image from [here](https://sonic-jenkins.westus2.cloudapp.azure.com/job/bldenv/job/docker-sonic-mgmt/lastSuccessfulBuild/artifact/sonic-buildimage/target/docker-sonic-mgmt.gz).
-```
-$ wget https://sonic-jenkins.westus2.cloudapp.azure.com/job/bldenv/job/docker-sonic-mgmt/lastSuccessfulBuild/artifact/sonic-buildimage/target/docker-sonic-mgmt.gz
-```
+Pre-built *sonic-mgmt* can also be downloaded from [here](https://sonic-jenkins.westus2.cloudapp.azure.com/job/bldenv/job/docker-sonic-mgmt/lastSuccessfulBuild/artifact/target/docker-sonic-mgmt.gz).
 
-- Load *sonic-mgmt* image
-```
-$ docker load -i docker-sonic-mgmt.gz
-```
+## Download sonic-vs image
 
-Run the `setup-container.sh` in the root directory of the sonic-mgmt repository:
+- Download sonic-vs image from [here](https://sonic-jenkins.westus2.cloudapp.azure.com/job/vs/job/buildimage-vs-image/lastSuccessfulBuild/artifact/target/sonic-vs.img.gz)
+- unzip the image and move it into ```~/sonic-vm/images/```
+
+## Clone sonic-mgmt repo
 
 ```
-$ cd sonic-mgmt
-$ ./setup-container.sh -n <container name> -d /data
+git clone https://github.com/Azure/sonic-mgmt
 ```
 
-From now on, all steps are running inside the *sonic-mgmt* docker except where otherwise specified.
-
-You can enter your sonic-mgmt container with the following command:
-
-```
-$ docker exec -u <alias> -it <container name> bash
-```
-
-### Setup public key to login into the linux host from sonic-mgmt docker
-
-- Modify veos_vtb to use the user name, e.g., `foo` to login linux host (this can be your username on the host).
+- Modify veos.vtb to use the user name to login linux host. Add public key authorized\_keys for your user. 
+Put the private key inside the sonic-mgmt docker container. Make sure you can login into box using 
+```ssh yourusername@172.17.0.1``` without any password prompt inside the docker container.
 
 ```
-lgh@gulv-vm2:/data/sonic-mgmt/ansible$ git diff
-diff --git a/ansible/veos_vtb b/ansible/veos_vtb
-index 3e7b3c4e..edabfc40 100644
---- a/ansible/veos_vtb
-+++ b/ansible/veos_vtb
-@@ -73,7 +73,7 @@ vm_host_1:
-   hosts:
-     STR-ACS-VSERV-01:
-       ansible_host: 172.17.0.1
--      ansible_user: use_own_value
-+      ansible_user: foo
+lgh@gulv-vm2:/data/sonic/sonic-mgmt/ansible$ git diff
+diff --git a/ansible/veos.vtb b/ansible/veos.vtb
+index 4ea5a7a..4cfc448 100644
+--- a/ansible/veos.vtb
++++ b/ansible/veos.vtb
+@@ -1,5 +1,5 @@
+[vm_host_1]
+-STR-ACS-VSERV-01 ansible_host=172.17.0.1 ansible_user=use_own_value
++STR-ACS-VSERV-01 ansible_host=172.17.0.1 ansible_user=lgh
 
- vms_1:
-   hosts:
+ [vm_host:children]
+vm_host_1
 ```
 
-- Create dummy `password.txt` under `/data/sonic-mgmt/ansible`
-
-  Please note: Here "password.txt" is the Ansible Vault password file name/path. Ansible allows user to use Ansible Vault to encrypt password files. By default, this shell script requires a password file. If you are not using Ansible Vault, just create a file with a dummy password and pass the filename to the command line. The file name and location is created and maintained by user.
-
-- Add user `foo`'s public key to `/home/foo/.ssh/authorized_keys` on the host
-
-- On the host, run `sudo visudo` and add the following line at the end:
+## Run sonic-mgmt docker
 
 ```
-foo ALL=(ALL) NOPASSWD:ALL
+docker run -v $PWD:/data -it docker-sonic-mgmt bash
 ```
 
-- Add user `foo`'s private key to `$HOME/.ssh/id_rsa` inside sonic-mgmt docker container.
-
-- Test you can login into the host `ssh foo@172.17.0.1` without any password prompt
-from the `sonic-mgmt` container. Then, test you can sudo without password prompt in the host.
+From now on, all steps are running inside the *sonic-mgmt* docker.
 
 ## Setup Arista VMs in the server
 
-(skip this step if you use cEOS image)
+```
+./testbed-cli.sh -m veos.vtb start-vms server_1 password.txt
+```
+  - please note: Here "password.txt" is the ansible vault password file name/path. Ansible allows user use ansible vault to encrypt password files. By default, this shell script require a password file. If you are not using ansible vault, just create an empty file and pass the filename to the command line. The file name and location is created and maintained by user. 
 
-```
-$ ./testbed-cli.sh -m veos_vtb -n 4 start-vms server_1 password.txt
-```
-  - Please note: Here "password.txt" is the Ansible Vault password file name/path. Ansible allows user to use Ansible Vault to encrypt password files. By default, this shell script requires a password file. If you are not using Ansible Vault, just create a file with a dummy password and pass the filename to the command line. The file name and location is created and maintained by user.
-
-Check that all VMs are up and running, and the passwd is `123456`
-```
-$ ansible -m ping -i veos_vtb server_1 -u root -k
-VM0102 | SUCCESS => {
-        "changed": false,
-                "ping": "pong"
-}
-VM0101 | SUCCESS => {
-        "changed": false,
-                "ping": "pong"
-}
-STR-ACS-VSERV-01 | SUCCESS => {
-        "changed": false,
-                "ping": "pong"
-}
-VM0103 | SUCCESS => {
-        "changed": false,
-                "ping": "pong"
-}
-VM0100 | SUCCESS => {
-        "changed": false,
-                "ping": "pong"
-}
-```
-
+Check that all VMs are up and running: ```ansible -m ping -i veos server_1```
 
 ## Deploy T0 topology
 
-### vEOS
 ```
-$ cd /data/sonic-mgmt/ansible
-$ ./testbed-cli.sh -t vtestbed.csv -m veos_vtb add-topo vms-kvm-t0 password.txt
-```
-
-### cEOS
-```
-$ cd /data/sonic-mgmt/ansible
-$ ./testbed-cli.sh -t vtestbed.csv -m veos_vtb -k ceos add-topo vms-kvm-t0 password.txt
-```
-
-Verify topology setup successfully.
-
-```
-$ docker ps
-CONTAINER ID        IMAGE                                                 COMMAND                  CREATED              STATUS              PORTS               NAMES
-575064498cbc        ceosimage:4.23.2F                                     "/sbin/init systemd.…"   About a minute ago   Up About a minute                       ceos_vms6-1_VM0103
-d71b8970bcbb        debian:jessie                                         "bash"                   About a minute ago   Up About a minute                       net_vms6-1_VM0103
-3d2e5ecdd472        ceosimage:4.23.2F                                     "/sbin/init systemd.…"   About a minute ago   Up About a minute                       ceos_vms6-1_VM0102
-28d64c74fa54        debian:jessie                                         "bash"                   About a minute ago   Up About a minute                       net_vms6-1_VM0102
-0fa067a47c7f        ceosimage:4.23.2F                                     "/sbin/init systemd.…"   About a minute ago   Up About a minute                       ceos_vms6-1_VM0101
-47066451fa4c        debian:jessie                                         "bash"                   About a minute ago   Up About a minute                       net_vms6-1_VM0101
-e07bd0245bd9        ceosimage:4.23.2F                                     "/sbin/init systemd.…"   About a minute ago   Up About a minute                       ceos_vms6-1_VM0100
-4584820bf368        debian:jessie                                         "bash"                   7 minutes ago        Up 7 minutes                            net_vms6-1_VM0100
-c929c622232a        sonicdev-microsoft.azurecr.io:443/docker-ptf:latest   "/usr/local/bin/supe…"   7 minutes ago        Up 7 minutes                            ptf_vms6-1
+./testbed-cli.sh -t vtestbed.csv -m veos.vtb add-topo vms-kvm-t0 password.txt
 ```
 
 ## Deploy minigraph on the DUT
 
 ```
-$ ./testbed-cli.sh -t vtestbed.csv -m veos_vtb deploy-mg vms-kvm-t0 lab password.txt
+./testbed-cli.sh -t vtestbed.csv -m veos.vtb deploy-mg vms-kvm-t0 lab password.txt
 ```
 
 You should be login into the sonic kvm using IP: 10.250.0.101 using admin:password.
@@ -215,13 +121,3 @@ Neighbor        V         AS MsgRcvd MsgSent   TblVer  InQ OutQ Up/Down  State/P
 10.0.0.61       4 64600    3205     950        0    0    0 00:00:21     6400
 10.0.0.63       4 64600    3204     950        0    0    0 00:00:21     6400
 ```
-
-
-
-
-
-
-
-
-
-

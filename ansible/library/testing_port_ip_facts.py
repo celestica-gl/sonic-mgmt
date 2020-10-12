@@ -33,7 +33,7 @@ Retrieve bgp peer ips
     dut_switch_ports: "{{ dut_switch_ports }}"
     minigraph_bgp: "{{ minigraph_bgp }}"
     minigraph_neighbors: "{{ minigraph_neighbors }}"
-  delegate_to: localhost
+  connection: local
 '''
 
 

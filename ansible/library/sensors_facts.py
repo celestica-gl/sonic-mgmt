@@ -1,5 +1,5 @@
 #!/usr/bin/python
-import re
+
 import subprocess
 from ansible.module_utils.basic import *
 
@@ -151,19 +151,14 @@ class SensorsModule(object):
         '''
         keys = path.split('/')
 
-        cur_values = self.raw
-        res = None
+        cur_value = self.raw
         for key in keys:
-            pattern = re.compile(key)
-            for cur_value in cur_values.keys():
-                res = re.match(pattern, cur_value)
-                if res is not None:
-                    cur_values = cur_values[res.group()]
-                    break
-            if res is None:
+            if key in cur_value:
+                cur_value = cur_value[key]
+            else:
                 return None
 
-        return cur_values
+        return cur_value
 
     def check_alarms(self):
         '''

@@ -1,1 +1,4 @@
-docker_registry_host: sonicdev-microsoft.azurecr.io:443
+docker_registry_host: localhost:5000
+
+docker_registry_username: clsnet
+docker_registry_password: 

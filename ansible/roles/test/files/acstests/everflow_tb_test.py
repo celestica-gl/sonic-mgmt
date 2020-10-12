@@ -76,9 +76,6 @@ class EverflowTest(BaseTest):
         self.src_port = int(float(self.test_params['src_port']))
         self.dst_ports = [int(float(p)) for p in self.test_params['dst_ports'].split(",") if p]
         self.expected_dst_mac = self.test_params.get('expected_dst_mac', None)
-        self.expect_received = self.test_params.get('expect_received', True)
-        self.acl_stage = self.test_params.get('acl_stage', 'ingress')
-        self.mirror_stage = self.test_params.get('mirror_stage', 'ingress')
 
         testutils.add_filter(self.gre_type_filter)
 
@@ -109,7 +106,7 @@ class EverflowTest(BaseTest):
         return (match_index, rcv_pkt, received)
 
 
-    def sendReceive(self, pkt2send, src_port, destination_ports):
+    def runSendReceiveTest(self, pkt2send, src_port, destination_ports):
         """
         @summary Send packet and verify it is received/not received on the expected ports
         """
@@ -145,19 +142,14 @@ class EverflowTest(BaseTest):
 
         payload = str(scapy_pkt[scapy.GRE].payload)
 
-        if self.asic_type in ["mellanox"]:
+        if self.hwsku in ["ACS-MSN2700", "ACS-MSN2100", "ACS-MSN2410", "ACS-MSN2740", "Mellanox-SN2700"]:
             payload = str(scapy_pkt[scapy.GRE].payload)[22:]
         if self.asic_type in ["barefoot"]:
             payload = str(scapy_pkt[scapy.GRE].payload)[12:]
 
         inner_pkt = scapy.Ether(payload)
 
-        if self.mirror_stage == 'egress':
-            pkt2send['IP'].ttl -= 1  # expect mirrored packet on egress has TTL decremented
-
         masked_inner_pkt = Mask(inner_pkt)
-        masked_inner_pkt.set_do_not_care_scapy(scapy.Ether, "dst")
-        masked_inner_pkt.set_do_not_care_scapy(scapy.Ether, "src")
         if scapy.IP in inner_pkt:
             masked_inner_pkt.set_do_not_care_scapy(scapy.IP, "chksum")
 
@@ -165,12 +157,6 @@ class EverflowTest(BaseTest):
             masked_inner_pkt.set_do_not_care_scapy(scapy.TCP, "chksum")
 
         return dataplane.match_exp_pkt(masked_inner_pkt, pkt2send)
-
-    def runSendReceiveTest(self, pkt, src_port, dst_ports):
-        if self.expect_received:
-            return self.sendReceive(pkt, src_port, dst_ports)
-        else:
-            return not self.sendReceive(pkt, src_port, dst_ports)
 
 
     @reportResults("Verify SRC IP match")

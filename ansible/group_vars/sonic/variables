@@ -1,6 +1,4 @@
 ansible_ssh_user: admin
-ansible_connection: multi_passwd_ssh
-ansible_altpassword: YourPaSsWoRd
 
 sonic_version: "v2"
 
@@ -17,9 +15,7 @@ mellanox_hwskus: "{{ mellanox_spc1_hwskus + mellanox_spc2_hwskus + mellanox_spc3
 
 cavium_hwskus: [ "AS7512", "XP-SIM" ]
 
-barefoot_hwskus: [ "montara", "mavericks", "Arista-7170-64C", "newport" ]
-
-marvell_hwskus: [ "et6448m" ]
+barefoot_hwskus: [ "montara", "mavericks", "Arista-7170-64C" ]
 
 ## Note:
 ## Docker volumes should be list instead of dict. However, if we want to keep code DRY, we

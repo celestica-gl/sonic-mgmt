@@ -22,10 +22,9 @@
               new_password={{ eos_password }}
               new_root_password={{ eos_root_password }}
     register: kickstart_output
-    until: '"kickstart_code" in kickstart_output and kickstart_output.kickstart_code == 0'
+    until: '"kickstart_code" in kickstart_output and kickstart_output.kickstart_code != -1'
     retries: 5
     delay: 10
-    ignore_errors: true
 
   - name: Destroy vm {{ vm_name }} if it hangs
     virt: name={{ vm_name }}
@@ -33,7 +32,6 @@
           uri=qemu:///system
     when: kickstart_output.kickstart_code != 0
     become: yes
-    ignore_errors: true
 
   - name: Start vm again {{ vm_name }}
     virt: name={{ vm_name }}
@@ -41,7 +39,6 @@
           uri=qemu:///system
     when: kickstart_output.kickstart_code != 0
     become: yes
-    ignore_errors: true
 
   - name: Wait until vm {{ vm_name }} is loaded
     kickstart: telnet_port={{ serial_port }}
@@ -54,15 +51,13 @@
               new_password={{ eos_password }}
               new_root_password={{ eos_root_password }}
     register: kickstart_output_final
-    until: '"kickstart_code" in kickstart_output_final and kickstart_output_final.kickstart_code == 0'
+    until: '"kickstart_code" in kickstart_output_final and kickstart_output_final.kickstart_code != -1'
     retries: 5
     delay: 10
-    ignore_errors: true
     when: kickstart_output.kickstart_code != 0
 
-  - name: Kickstart gives error again vm {{ vm_name }}
-    set_fact:
-      kickstart_failed_vms: "{{ kickstart_failed_vms + [vm_name] }}"
+  - name: Fail if kickstart gives error again vm {{ vm_name }}
+    fail: msg="Two attempts to start vm weren't successful"
     when: '"kickstart_code" in kickstart_output_final and kickstart_output_final.kickstart_code != 0'
 
   - name: Set VM to autostart

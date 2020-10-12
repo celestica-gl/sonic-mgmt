@@ -11,12 +11,12 @@
   when: allow_recover is not defined
 
 - name: do basic sanity check before each test
-  include_tasks: base_sanity.yml
+  include: base_sanity.yml
   vars: 
      recover: "{{ allow_recover }}"
 
 - name: validate all interfaces are up
-  include_tasks: interface.yml
+  include: interface.yml
   vars:
      recover: "{{ allow_recover }}"
 
@@ -32,37 +32,17 @@
 - name: print system versions
   debug: var=versions.stdout_lines
 
-- set_fact:
-    skip_test: false
+- name: run test case {{ testcases[testcase_name]['filename'] }} file
+  include: "{{ testcases[testcase_name]['filename'] }}"
 
-- set_fact:
-    skip_test: true
-  when: 
-    - hostvars[ansible_hostname]['type'] is defined
-    - testcases[testcase_name]['vtestbed_compatible'] is defined
-    - hostvars[ansible_hostname]['type'] == 'kvm' or hostvars[ansible_hostname]['type'] == 'simx'
-    - not testcases[testcase_name]['vtestbed_compatible'] | bool
+- name: do basic sanity check after each test
+  include: base_sanity.yml
 
-- block:
-    - name: run test case {{ testcases[testcase_name]['filename'] }} file
-      include_tasks: "{{ testcases[testcase_name]['filename'] }}"
-  
-    - name: do basic sanity check after each test
-      include_tasks: base_sanity.yml
-
-    - name: validate all interfaces are up after test
-      include_tasks: interface.yml
-
-    - debug:
-        msg:
-          - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-          - "!!!!!!!!!!!!!!!!!!!! end running test {{ testcase_name }} !!!!!!!!!!!!!!!!!!!!!!"
-          - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-  when: not skip_test
+- name: validate all interfaces are up after test
+  include: interface.yml
 
 - debug:
     msg:
       - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-      - "!!!!!!!!!!!!!!!!!!!! test {{ testcase_name }} was skipped !!!!!!!!!!!!!!!!!!!!!!"
+      - "!!!!!!!!!!!!!!!!!!!! end running test {{ testcase_name }} !!!!!!!!!!!!!!!!!!!!!!"
       - "!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!"
-  when: skip_test

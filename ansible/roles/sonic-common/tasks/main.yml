@@ -26,18 +26,12 @@
   when: sonic_hwsku in barefoot_hwskus
   tags: always
 
-- name: Set sonic_asic_type fact
-    set_fact:
-    sonic_asic_type: marvell
-  when: sonic_hwsku in marvell_hwskus
-  tags: always
-
 - name: update sonicadmin password
-  include_tasks: passwd.yml
+  include: passwd.yml
   tags: system
 
 # Setup apt repo
-- include_tasks: aptrepo.yml
+- include: aptrepo.yml
   tags: repo
 
 - name: Ensure /etc/sonic path exists
@@ -178,11 +172,11 @@
   tags: network,unsafe
 
 # Docker engine
-- include_tasks: docker.yml
+- include: docker.yml
   tags: docker
  
 ## Redis database
-- include_tasks: database.yml
+- include: database.yml
   tags:
     - swss
     - database
@@ -207,7 +201,7 @@
   when: sonic_hwsku != "AS7512"
 
 # Setup Platform
-- include_tasks: platform.yml
+- include: platform.yml
   tags: platform,unsafe
 
 # Install Persistent Iptables Package
@@ -218,21 +212,21 @@
   tags: unsafe
 
 # setup sudoers
-- include_tasks: sudoers.yml
+- include: sudoers.yml
 
 # Install Logrotate
-- include_tasks: logrotate.yml
+- include: logrotate.yml
 
 # SNMP
-- include_tasks: snmp.yml
+- include: snmp.yml
   tags: snmp
 
 # LLDP
-- include_tasks: lldp.yml
+- include: lldp.yml
   tags: lldp
 
 # DHCP Relay
-- include_tasks: dhcp_relay.yml
+- include: dhcp_relay.yml
   tags: dhcp_relay
   when: minigraph_devices[inventory_hostname]['type'] == "ToRRouter"
 

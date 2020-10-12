@@ -6,7 +6,7 @@
 #  - configuration property
 #  - configuration
 #
-#  topology key contains a dictionary of hostnames with 'vm_offset' and 'vlans' keys in it.
+#  topology key contains a dictionary of hostnames with 'vm_offset' and 'vlans' keys in it. 
 #  'vm_offset' is used to map current hostname vm_set VM to server VM (like ARISTA01T0 -> VM0300).
 #  This offset is used on VM_base
 #  'vlans' is a list of vlan offsets which helps us to calculate vlan numbers which will be connected to Eth1/1..Eth1/8 interfaces.
@@ -24,7 +24,6 @@
 # -e dut_name=str-msn2700-01 - the name of target dut
 # -e VM_base=VM0300          - the VM name which is used to as base to calculate VM name for this set
 # -e ptf_ip=10.255.0.255/23 - the ip address and prefix of ptf container mgmt interface
-# -e ptf_ipv6=fec0::ffff:afa:1/64 - the ipv6 address and prefix of ptf container mgmt interface
 # -e topo=t0                 - the name of removed topo
 # -e ptf_imagename=docker-ptf - name of a docker-image which will be used for the ptf docker container
 
@@ -53,10 +52,6 @@
     fail: msg="Define ptf ip variable with -e ptf_ip=something"
     when: ptf_ip is not defined
 
-  - name: Check that variable ptf_ipv6 is defined
-    fail: msg="Define ptf ipv6 variable with -e ptf_ipv6=something"
-    when: ptf_ipv6 is not defined
-
   - name: Check that variable topo is defined
     fail: msg="Define topo variable with -e topo=something"
     when: topo is not defined
@@ -74,7 +69,7 @@
 
   - name: Read dut minigraph
     conn_graph_facts: host={{ dut_name }}
-    delegate_to: localhost
+    connection: local
 
   roles:
     - { role: vm_set, action: 'stop_sonic_vm' }

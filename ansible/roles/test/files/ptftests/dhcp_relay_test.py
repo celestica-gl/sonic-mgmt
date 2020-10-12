@@ -143,9 +143,6 @@ class DHCPTest(DataplaneBaseTest):
         self.client_ip = incrementIpAddress(self.relay_iface_ip, 1) 
         self.client_subnet = self.test_params['relay_iface_netmask']
 
-        self.dest_mac_address = self.test_params['dest_mac_address']
-        self.client_udp_src_port = self.test_params['client_udp_src_port']
-
 
     def tearDown(self):
         DataplaneBaseTest.tearDown(self)
@@ -156,13 +153,8 @@ class DHCPTest(DataplaneBaseTest):
     
     """
 
-    def create_dhcp_discover_packet(self, dst_mac=BROADCAST_MAC, src_port=DHCP_CLIENT_PORT):
-        discover_packet = testutils.dhcp_discover_packet(eth_client=self.client_mac, set_broadcast_bit=True)
-
-        discover_packet[scapy.Ether].dst = dst_mac
-        discover_packet[scapy.IP].sport = src_port
-
-        return discover_packet
+    def create_dhcp_discover_packet(self):
+        return testutils.dhcp_discover_packet(eth_client=self.client_mac, set_broadcast_bit=True)
 
     def create_dhcp_discover_relayed_packet(self):
         my_chaddr = ''.join([chr(int(octet, 16)) for octet in self.client_mac.split(':')])
@@ -263,18 +255,11 @@ class DHCPTest(DataplaneBaseTest):
         pkt = ether / ip / udp / bootp
         return pkt
 
-    def create_dhcp_request_packet(self, dst_mac=BROADCAST_MAC, src_port=DHCP_CLIENT_PORT):
-        request_packet = testutils.dhcp_request_packet(
-            eth_client=self.client_mac,
-            ip_server=self.server_ip,
-            ip_requested=self.client_ip,
-            set_broadcast_bit=True
-        )
-
-        request_packet[scapy.Ether].dst = dst_mac
-        request_packet[scapy.IP].sport = src_port
-
-        return request_packet
+    def create_dhcp_request_packet(self):
+        return testutils.dhcp_request_packet(eth_client=self.client_mac,
+                    ip_server=self.server_ip,
+                    ip_requested=self.client_ip,
+                    set_broadcast_bit=True)
 
     def create_dhcp_request_relayed_packet(self):
         my_chaddr = ''.join([chr(int(octet, 16)) for octet in self.client_mac.split(':')])
@@ -378,9 +363,9 @@ class DHCPTest(DataplaneBaseTest):
     """
 
     # Simulate client coming on VLAN and broadcasting a DHCPDISCOVER message
-    def client_send_discover(self, dst_mac=BROADCAST_MAC, src_port=DHCP_CLIENT_PORT):
+    def client_send_discover(self):
         # Form and send DHCPDISCOVER packet
-        dhcp_discover = self.create_dhcp_discover_packet(dst_mac, src_port)
+        dhcp_discover = self.create_dhcp_discover_packet()
         testutils.send_packet(self, self.client_port_index, dhcp_discover)
 
     # Verify that the DHCP relay actually received and relayed the DHCPDISCOVER message to all of
@@ -461,8 +446,8 @@ class DHCPTest(DataplaneBaseTest):
         testutils.verify_packet(self, masked_offer, self.client_port_index)
 
     # Simulate our client sending a DHCPREQUEST message
-    def client_send_request(self, dst_mac=BROADCAST_MAC, src_port=DHCP_CLIENT_PORT):
-        dhcp_request = self.create_dhcp_request_packet(dst_mac, src_port)
+    def client_send_request(self):
+        dhcp_request = self.create_dhcp_request_packet()
         testutils.send_packet(self, self.client_port_index, dhcp_request)
 
     # Verify that the DHCP relay actually received and relayed the DHCPREQUEST message to all of
@@ -537,11 +522,11 @@ class DHCPTest(DataplaneBaseTest):
         testutils.verify_packet(self, masked_ack, self.client_port_index)
 
     def runTest(self):
-        self.client_send_discover(self.dest_mac_address, self.client_udp_src_port)
+        self.client_send_discover()
         self.verify_relayed_discover()
         self.server_send_offer()
         self.verify_offer_received()
-        self.client_send_request(self.dest_mac_address, self.client_udp_src_port)
+        self.client_send_request()
         self.verify_relayed_request()
         self.server_send_ack()
         self.verify_ack_received()

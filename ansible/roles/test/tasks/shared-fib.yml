@@ -30,7 +30,11 @@
 # Generate route file
 - name: Generate route-port map information
   template: src=roles/test/templates/fib.j2
-            dest=/root/fib_info.txt
+            dest=/tmp/fib_info.txt
+  connection: local
+
+- name: copy the fib_info to ptf container
+  copy: src=/tmp/fib_info.txt dest=/root
   delegate_to: "{{ptf_host}}"
 
 

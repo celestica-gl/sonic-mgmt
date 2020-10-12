@@ -6,23 +6,28 @@
 - name: find interface name mapping
   port_alias: hwsku="{{ device_info["HwSku"] }}"
 
-- name: build fanout vlan config
-  template: src=sonic_deploy.j2
-            dest=/etc/sonic/vlan.json
-  become: yes
+#- name: build fanout vlan config
+#  template: src=sonic_deploy.j2
+#
+#            dest=/etc/sonic/vlan.json
+#  become: yes
 
 - name: disable all copp rules
-  shell:
-    cmd: docker exec swss bash -c 'echo [] > /etc/swss/config.d/00-copp.config.json'
+  copy: content='[]'
+        dest=/etc/swss/config.d/00-copp.config.json
   become: yes
+  vars:
+    ansible_shell_type: docker
+    ansible_python_interpreter: docker exec -i swss python
 
-- name: generate config_db.json
-  shell: sonic-cfggen -H -j /etc/sonic/vlan.json -j /etc/sonic/init_cfg.json --print-data > /etc/sonic/config_db.json
-  become: yes
+#- name: generate config_db.json
+#  shell: sonic-cfggen -H -j /etc/sonic/vlan.json -j /etc/sonic/init_cfg.json --print-data > /etc/sonic/config_db.json
+#
+#  become: yes
 
-- name: reload config_db.json
-  shell: config reload -y
-  become: yes
+#- name: reload config_db.json
+#  shell: config reload -y
+#  become: yes
 
 - name: stop and disable lldp service
   service: name=lldp state=stopped enabled=no

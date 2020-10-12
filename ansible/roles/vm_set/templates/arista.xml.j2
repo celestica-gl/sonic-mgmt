@@ -45,9 +45,11 @@
       <virtualport type='openvswitch'/>
     </interface>
 {% endfor %}
-    <interface type='ethernet'>
+    <interface type='bridge'>
       <model type='virtio'/>
-      <target dev='{{ backplane_tap }}'/>
+      <source bridge='{{ port1_bridge }}'/>
+      <target dev='{{ port1_tap }}'/>
+      <virtualport type='openvswitch'/>
     </interface>
     <serial type='tcp'>
       <source host='127.0.0.1' mode='bind' service='{{ serial_port }}'/>
