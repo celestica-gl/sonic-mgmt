@@ -1,3 +1,4 @@
+StartDevice,StartPort,EndDevice,EndPort,BandWidth,VlanID,VlanMode
 cel-e1031-01,Ethernet1,e1031-fanout,Ethernet1,1000,100,Access
 cel-e1031-01,Ethernet2,e1031-fanout,Ethernet2,1000,101,Access
 cel-e1031-01,Ethernet3,e1031-fanout,Ethernet3,1000,102,Access
@@ -61,4 +62,3 @@ cel-seastone-01,Ethernet108,seastone-fanout,Ethernet108,100000,127,Access
 cel-seastone-01,Ethernet112,seastone-fanout,Ethernet112,100000,128,Access
 cel-seastone-01,Ethernet116,seastone-fanout,Ethernet116,100000,129,Access
 cel-seastone-01,Ethernet120,seastone-fanout,Ethernet120,100000,130,Access
-StartDevice,StartPort,EndDevice,EndPort,BandWidth,VlanID,VlanMode

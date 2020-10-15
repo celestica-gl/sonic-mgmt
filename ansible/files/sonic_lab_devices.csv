@@ -1,10 +1,9 @@
-
+Hostname,ManagementIp,HwSku,Type
 cel-e1031-01,10.250.0.100/23,Celestica-E1031-T48S4,DevSonic
 cel-seastone-01,10.251.0.100/23,Celestica-DX010-C32,DevSonic
 cel-seastone-02,10.250.0.100/23,Seastone-DX010-10-50,DevSonic
 cel-seastone-03,10.250.0.100/23,Seastone-DX010-50,DevSonic
 e1031-fanout,10.250.0.235/23,Celestica-E1031-T48S4,FanoutLeafSonic
-Hostname,ManagementIp,HwSku,Type
 seastone-fanout,10.251.0.235/23,Celestica-DX010-C32,FanoutLeafSonic
 str-msn2700-01,10.251.0.188/23,Mellanox-2700,DevSonic
 str-7260-10,10.251.0.13/23,Arista-7260QX-64,FanoutLeaf

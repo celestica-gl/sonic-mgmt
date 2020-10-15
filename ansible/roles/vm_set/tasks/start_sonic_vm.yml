@@ -1,8 +1,14 @@
+- name: Print mess
+  debug: msg="{{ hostvars }}"
+
 - name: Create directory for vm images and vm disks
   file: path={{ item }} state=directory mode=0755
   with_items:
     - "sonic-vm/images"
     - "sonic-vm/disks"
+
+- name: Print mess
+  debug: msg="{{ hostvars }}"
 
 - set_fact:
     src_disk_image: "{{ home_path }}/sonic-vm/images/sonic-vs.img"

@@ -30,7 +30,7 @@
       leaf_name: "{{ inventory_hostname }}"
       leaf: "{{ ansible_host }}"
 
-  - include: rootfanout_connect.yml
-      deploy_leaf=true
-  when: sw_type == 'FanoutLeaf'
+#  - include: rootfanout_connect.yml
+#      deploy_leaf=true
+#  when: sw_type == 'FanoutLeaf'
 
