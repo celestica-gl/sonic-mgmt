@@ -487,6 +487,8 @@ def _human_to_bytes(number):
 
     if isinstance(number, int):
         return number
+    if isinstance(number, str) and number.isdigit():
+        return int(number)
     if number[-1] == suffixes[0] and number[-2].isdigit():
         return number[:-1]
 

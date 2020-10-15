@@ -18,8 +18,8 @@
     username: "{{ docker_registry_username }}"
     password: "{{ docker_registry_password }}"
     name: ptf_{{ vm_set_name }}
-    image: "{{ docker_registry_host }}/{{ ptf_imagename }}:{{ ptf_imagetag }}"
-    pull: always
+    image: "{{ docker_registry_host }}/{{ ptf_imagename }}"
+    pull: missing
     state: reloaded
     net: none
     detach: True
