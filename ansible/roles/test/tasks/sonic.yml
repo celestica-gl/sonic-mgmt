@@ -30,7 +30,7 @@
     - fail: msg="You didn't provide testbed_name=yourtestbedname, so will run by test by tag. Please specify tests you want to run using --tags"
       when: tags is not defined
 
-    - include: test_sonic_by_tag.yml
+    - include_tasks: test_sonic_by_tag.yml
   when:
     - testbed_name is not defined
 
