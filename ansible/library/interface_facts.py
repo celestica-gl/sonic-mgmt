@@ -301,7 +301,7 @@ def main():
                 down_ports += [name]
         except:
             down_ports += [name]
-            pass 
+            pass
 
     results['ansible_interface_facts'] = interfaces
     results['ansible_interface_ips'] = ips
