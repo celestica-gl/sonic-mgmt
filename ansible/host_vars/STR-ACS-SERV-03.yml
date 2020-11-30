@@ -1,0 +1,4 @@
+mgmt_bridge: br2
+mgmt_prefixlen: 23
+mgmt_gw: 10.251.0.1
+external_port: enp175s0f0
