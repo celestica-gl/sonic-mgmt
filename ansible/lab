@@ -12,9 +12,17 @@ cel-e1031-01 ansible_host=10.250.0.100
 hwsku="Celestica-E1031-T48S4"
 iface_speed='1000'
 
+[sonic_slx2]
+cel-seastone2-01 ansible_host=10.251.0.100 pdu_host=pdu-1
+
+[sonic_slx2:vars]
+hwsku="Seastone_2"
+iface_speed='100000'
+
 [sonic:children]
 sonic_slx
 sonic_e1031
+sonic_slx2
 
 [ptf]
 ptf1 ansible_host=10.250.0.110 ansible_ssh_user=root ansible_ssh_pass=root
