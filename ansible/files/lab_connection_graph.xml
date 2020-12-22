@@ -6,6 +6,7 @@
       <Device Hostname="str-7260-11" HwSku="Arista-7260QX-64" Type="FanoutRoot"/>
       <Device Hostname="str-acs-serv-01" HwSku="TestServ" Type="Server"/>
       <Device Hostname="seastone-fanout" HwSku="Celestica-DX010-C32" Type="FanoutLeafSonic"/>
+      <Device Hostname="cel-seastone2-01" HwSku="Seastone_2" Type="DevSonic"/>
       <Device Hostname="cel-seastone-01" HwSku="Celestica-DX010-C32" Type="DevSonic"/>
       <Device Hostname="cel-seastone-02" HwSku="Seastone-DX010-10-50" Type="DevSonic"/>
       <Device Hostname="cel-seastone-03" HwSku="Seastone-DX010-50" Type="DevSonic"/>
@@ -44,6 +45,37 @@
       <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet112" StartDevice="cel-seastone-01" StartPort="Ethernet112"/>
       <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet116" StartDevice="cel-seastone-01" StartPort="Ethernet116"/>
       <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet120" StartDevice="cel-seastone-01" StartPort="Ethernet120"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet0" StartDevice="cel-seastone2-01" StartPort="Ethernet0"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet4" StartDevice="cel-seastone2-01" StartPort="Ethernet4"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet8" StartDevice="cel-seastone2-01" StartPort="Ethernet8"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet12" StartDevice="cel-seastone2-01" StartPort="Ethernet12"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet16" StartDevice="cel-seastone2-01" StartPort="Ethernet16"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet20" StartDevice="cel-seastone2-01" StartPort="Ethernet20"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet24" StartDevice="cel-seastone2-01" StartPort="Ethernet24"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet28" StartDevice="cel-seastone2-01" StartPort="Ethernet28"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet32" StartDevice="cel-seastone2-01" StartPort="Ethernet32"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet36" StartDevice="cel-seastone2-01" StartPort="Ethernet36"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet40" StartDevice="cel-seastone2-01" StartPort="Ethernet40"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet44" StartDevice="cel-seastone2-01" StartPort="Ethernet44"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet48" StartDevice="cel-seastone2-01" StartPort="Ethernet48"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet52" StartDevice="cel-seastone2-01" StartPort="Ethernet52"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet56" StartDevice="cel-seastone2-01" StartPort="Ethernet56"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet60" StartDevice="cel-seastone2-01" StartPort="Ethernet60"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet64" StartDevice="cel-seastone2-01" StartPort="Ethernet64"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet68" StartDevice="cel-seastone2-01" StartPort="Ethernet68"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet72" StartDevice="cel-seastone2-01" StartPort="Ethernet72"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet76" StartDevice="cel-seastone2-01" StartPort="Ethernet76"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet80" StartDevice="cel-seastone2-01" StartPort="Ethernet80"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet84" StartDevice="cel-seastone2-01" StartPort="Ethernet84"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet88" StartDevice="cel-seastone2-01" StartPort="Ethernet88"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet92" StartDevice="cel-seastone2-01" StartPort="Ethernet92"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet96" StartDevice="cel-seastone2-01" StartPort="Ethernet96"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet100" StartDevice="cel-seastone2-01" StartPort="Ethernet100"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet104" StartDevice="cel-seastone2-01" StartPort="Ethernet104"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet108" StartDevice="cel-seastone2-01" StartPort="Ethernet108"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet112" StartDevice="cel-seastone2-01" StartPort="Ethernet112"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet116" StartDevice="cel-seastone2-01" StartPort="Ethernet116"/>
+      <DeviceInterfaceLink BandWidth="100000" EndDevice="seastone-fanout" EndPort="Ethernet120" StartDevice="cel-seastone2-01" StartPort="Ethernet120"/>
       <DeviceInterfaceLink BandWidth="1000" EndDevice="e1031-fanout" EndPort="Ethernet1" StartDevice="cel-e1031-01" StartPort="Ethernet1"/>
       <DeviceInterfaceLink BandWidth="1000" EndDevice="e1031-fanout" EndPort="Ethernet2" StartDevice="cel-e1031-01" StartPort="Ethernet2"/>
       <DeviceInterfaceLink BandWidth="1000" EndDevice="e1031-fanout" EndPort="Ethernet3" StartDevice="cel-e1031-01" StartPort="Ethernet3"/>

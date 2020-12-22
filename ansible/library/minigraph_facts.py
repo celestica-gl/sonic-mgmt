@@ -209,7 +209,7 @@ def parse_dpg(dpg, hname):
             pcintfname = pcintf.find(str(QName(ns, "Name"))).text
             pcintfmbr = pcintf.find(str(QName(ns, "AttachTo"))).text
             pcmbr_list = pcintfmbr.split(';', 1)
-            for i, member in enumerate(pcmbr_list):
+	    for i, member in enumerate(pcmbr_list):
                 pcmbr_list[i] = port_alias_to_name_map[member]
                 ports[port_alias_to_name_map[member]] = {'name': port_alias_to_name_map[member], 'alias': member}
             pcs[pcintfname] = {'name': pcintfname, 'members': pcmbr_list}
@@ -528,6 +528,9 @@ def parse_xml(filename, hostname):
     elif hwsku == "Celestica-DX010-C32":
         for i in range(1, 33):
             port_alias_to_name_map["etp%d" % i] = "Ethernet%d" % ((i - 1) * 4)
+    elif hwsku == "Seastone_2":
+        for i in range(1, 33):
+            port_alias_to_name_map["QSFP%d" % i] = "Ethernet%d" % ((i - 1) * 4)        
     elif hwsku == "Seastone-DX010":
         for i in range(1, 33):
             port_alias_to_name_map["Eth%d" % i] = "Ethernet%d" % ((i - 1) * 4)
