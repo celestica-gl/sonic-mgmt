@@ -101,10 +101,10 @@ vms_3
 vms_4
 
 ## The groups below are helper to limit running playbooks to server_1, server_2 or server_3 only
+## vms_2  for t1,need open it 
 [server_1:children]
 vm_host_1
 vms_1
-#vms_2  for t1,need open it 
 
 [server_1:vars]
 host_var_file=host_vars/STR-ACS-SERV-01.yml

@@ -2,7 +2,7 @@
 cel_slx_t0,ptf2,t0-slx,docker-ptf,ptf2,10.251.0.110/24,,server_2,VM0300,cel-seastone-01,Tests ptf
 cel_slx2_t0,ptf2,t0-slx,docker-ptf,ptf2,10.251.0.110/24,,server_2,VM0300,cel-seastone2-01,Tests ptf
 cel_slx_t1,ptf2,t1-slx,docker-ptf,ptf2,10.251.0.110/24,,server_3,VM0400,cel-seastone-01,Tests ptf
-cel_e1031_t0,ptf1,t0-e1031,docker-ptf,ptf-unknown,10.250.0.110/24,,server_1,VM0100,cel-e1031-01,Tests ptf
+cel_e1031_t0,ptf1,t0-e1031,docker-ptf,ptf1,10.250.0.110/24,,server_1,VM0100,cel-e1031-01,Tests ptf
 ptf1-m,ptf1,ptf32,docker-ptf-sai-mlnx,ptf-unknown,10.255.0.188/24,,server_1,,str-msn2700-01,Test ptf Mellanox
 ptf2-b,ptf2,ptf64,docker-ptf-sai-brcm,ptf-unknown,10.255.0.189/24,,server_1,,lab-s6100-01,Test ptf Broadcom
 vms-sn2700-t1,vms1-1,t1,docker-ptf-sai-mlnx,ptf-unknown,10.255.0.178/24,,server_1,VM0100,str-msn2700-01,Tests Mellanox SN2700 vms
