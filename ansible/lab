@@ -13,7 +13,7 @@ hwsku="Celestica-E1031-T48S4"
 iface_speed='1000'
 
 [sonic_slx2]
-cel-seastone2-01 ansible_host=10.251.0.100 pdu_host=pdu-1
+cel-seastone2-01 ansible_host=10.251.0.100
 
 [sonic_slx2:vars]
 hwsku="Seastone_2"
