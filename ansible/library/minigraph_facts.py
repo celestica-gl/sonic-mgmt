@@ -543,6 +543,9 @@ def parse_xml(filename, hostname):
     elif hwsku == "newport":
         for i in range(0, 256, 8):
             port_alias_to_name_map["Ethernet%d" % i] = "Ethernet%d" % i
+    elif hwsku == "Silverstone":
+        for i in range(1, 33):
+            port_alias_to_name_map["QSFPDD%d" % i] = "Ethernet%d" % ((i -1) *4)
     else:
         for i in range(0, 128, 4):
             port_alias_to_name_map["Ethernet%d" % i] = "Ethernet%d" % i

@@ -19,10 +19,19 @@ cel-seastone2-01 ansible_host=10.251.0.100 pdu_host=pdu-1
 hwsku="Seastone_2"
 iface_speed='100000'
 
+[sonic_sil]
+cel-silverstone-01 ansible_host=10.250.0.100
+
+[sonic_sil:vars]
+hwsku="Silverstone"
+iface_speed='400000'
+
+
 [sonic:children]
 sonic_slx
 sonic_e1031
 sonic_slx2
+sonic_sil
 
 [ptf]
 ptf1 ansible_host=10.250.0.110 ansible_ssh_user=root ansible_ssh_pass=root
@@ -40,6 +49,7 @@ mgmt_subnet_mask_length="24"
 [fanout]
 seastone-fanout ansible_host=10.251.0.235 os=sonic ansible_ssh_user=admin ansible_ssh_pass=password
 e1031-fanout ansible_host=10.250.0.235 os=sonic ansible_ssh_user=admin ansible_ssh_pass=password 
+silverstone-fanout ansible_host=10.250.0.235 os=sonic ansible_ssh_user=admin ansible_ssh_pass=password
 
 [pdu]
 pdu-1 ansible_host=10.204.112.55 protocol=snmp

@@ -261,7 +261,7 @@ veos:
     cd_image_filename: Aboot-veos-serial-8.0.0.iso                  # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
     hdd_image_filename: vEOS-lab-4.15.10M.vmdk                       # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
     skip_image_downloading: true                                   # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
-    vm_console_base: 7000                                           # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
+    vm_console_base: 7001                                           # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
     memory: 2097152                                                 # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
     max_fp_num: 4                                                   # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
     proxy_env:                                                      # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml

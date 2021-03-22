@@ -49,6 +49,7 @@
     when: vms["{{ item }}"]['hwsku'] == 'Arista-VM'
     with_items: vms
     register: vm_portchannel_status
+    #debugger: always
 
   - name: Debug Port-Channel on VMs
     debug: msg={{ vm_portchannel_status }}
