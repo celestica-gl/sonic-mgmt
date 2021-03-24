@@ -4,6 +4,9 @@ cel-seastone-01 ansible_host=10.251.0.100 pdu_host=pdu-1
 [sonic_slx:vars]
 hwsku="Celestica-DX010-C32"
 iface_speed='100000'
+model="R0872-F0010-01"
+R0872-F0010-01="DX010B2F077601LK000004"
+base_mac="00:E0:EC:5A:B6:DE"
 
 [sonic_e1031]
 cel-e1031-01 ansible_host=10.250.0.100
