@@ -10,13 +10,16 @@
 # 1. 'config_file' is a filename of a file which contains all necessary information to run the test. The file is populated by ansible. This parameter is mandatory.
 # 2. 'vxlan_enabled' is a boolean parameter. When the parameter is true the test will fail if vxlan test failing. When the parameter is false the test will not fail. By default this parameter is false.
 # 3. 'count' is an integer parameter. It defines how many packets are sent for each combination of ingress/egress interfaces. By default the parameter equal to 1
-# 4. 'dut_host' is the ip address of dut.
+# 4. 'dut_hostname' is the name of dut.
 # 5. 'sonic_admin_user': User name to login dut
 # 6. 'sonic_admin_password': Password for sonic_admin_user to login dut
+# 7. 'sonic_admin_alt_password': Alternate Password for sonic_admin_user to login dut
 
 import sys
 import os.path
 import json
+import time
+import pprint
 import ptf
 import ptf.packet as scapy
 from ptf.base_tests import BaseTest
@@ -31,8 +34,6 @@ import subprocess
 import traceback
 import socket
 import struct
-from pprint import pprint
-from pprint import pformat
 from device_connection import DeviceConnection
 import re
 
@@ -45,13 +46,13 @@ def count_matched_packets_helper(test, exp_packet, exp_packet_number, port, devi
         raise Exception("%s() requires positive timeout value." % sys._getframe().f_code.co_name)
 
     total_rcv_pkt_cnt = 0
-    while True:
-        result = dp_poll(test, device_number=device_number, port_number=port, timeout=timeout)
+    end_time = time.time() + timeout
+    while time.time() < end_time:
+        result = dp_poll(test, device_number=device_number, port_number=port, timeout=timeout, exp_pkt=exp_packet)
         if isinstance(result, test.dataplane.PollSuccess):
-            if ptf.dataplane.match_exp_pkt(exp_packet, result.packet):
-                total_rcv_pkt_cnt += 1
-                if total_rcv_pkt_cnt == exp_packet_number:
-                    break
+            total_rcv_pkt_cnt += 1
+            if total_rcv_pkt_cnt == exp_packet_number:
+                break
         else:
             break
 
@@ -91,6 +92,9 @@ class Vxlan(BaseTest):
         self.vxlan_enabled = False
         self.random_mac = '8c:01:02:03:04:05'
         self.nr = 1
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        log_file_name = "/tmp/vxlan_decap_test.{}.log".format(current_time)
+        self.log_fp = open(log_file_name, 'w')
 
     def cmd(self, cmds):
         process = subprocess.Popen(cmds,
@@ -101,6 +105,11 @@ class Vxlan(BaseTest):
         return_code = process.returncode
 
         return stdout, stderr, return_code
+
+    def log(self, message):
+        current_time = datetime.datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        self.log_fp.write("{} : {}\n".format(current_time, message))
+        self.log_fp.flush()
 
     def readMacs(self):
         addrs = {}
@@ -162,9 +171,9 @@ class Vxlan(BaseTest):
             raise Exception("required parameter 'config_file' is not present")
         config = self.test_params['config_file']
 
-        if 'dut_host' not in self.test_params:
-            raise Exception("required parameter 'dut_host' is not present")
-        self.dut_host = self.test_params['dut_host']
+        if 'dut_hostname' not in self.test_params:
+            raise Exception("required parameter 'dut_hostname' is not present")
+        self.dut_hostname = self.test_params['dut_hostname']
 
         if 'sonic_admin_user' not in self.test_params:
             raise Exception("required parameter 'sonic_admin_user' is not present")
@@ -173,6 +182,10 @@ class Vxlan(BaseTest):
         if 'sonic_admin_password' not in self.test_params:
             raise Exception("required parameter 'sonic_admin_password' is not present")
         self.sonic_admin_password = self.test_params['sonic_admin_password']
+
+        if 'sonic_admin_alt_password' not in self.test_params:
+            raise Exception("required parameter 'sonic_admin_alt_password' is not present")
+        self.sonic_admin_alt_password = self.test_params['sonic_admin_alt_password']
 
         if not os.path.isfile(config):
             raise Exception("the config file %s doesn't exist" % config)
@@ -221,6 +234,7 @@ class Vxlan(BaseTest):
             test['vlan_ip_prefixes'] = self.generate_VlanPrefixes(gw, prefixlen, test['acc_ports'])
 
             self.tests.append(test)
+        self.log('Collected tests: {}'.format(pprint.pformat(self.tests)))
 
         self.dut_mac = graph['dut_mac']
 
@@ -243,9 +257,10 @@ class Vxlan(BaseTest):
         time.sleep(10)
         self.dataplane.flush()
         self.dut_connection = DeviceConnection(
-            self.dut_host,
+            self.dut_hostname,
             self.sonic_admin_user,
-            password=self.sonic_admin_password
+            password=self.sonic_admin_password,
+            alt_password=self.sonic_admin_alt_password
         )
 
         return
@@ -277,27 +292,21 @@ class Vxlan(BaseTest):
         return True
 
     def wait_dut(self, test, timeout):
-        t = 0
-        while t < timeout:
-            if self.check_fdb_on_dut(test):
-                break;
-            t += 1
-        if t >= timeout:
-            return False
-        while t < timeout:
-            if self.check_arp_table_on_dut(test):
-                break;
-            t += 1
-        if t >= timeout:
-            return False
-        return True
+        start_time = datetime.datetime.now()
+        while True:
+            if self.check_fdb_on_dut(test) and self.check_arp_table_on_dut(test):
+                return True
+            if (datetime.datetime.now() - start_time).seconds > timeout:
+                return False
+            time.sleep(3)
 
     def tearDown(self):
         self.cmd(["supervisorctl", "stop", "arp_responder"])
+        self.log_fp.close()
         return
 
     def warmup(self):
-        print "Warming up"
+        self.log("Warming up")
         err = ''
         trace = ''
         ret = 0
@@ -307,6 +316,7 @@ class Vxlan(BaseTest):
                 self.RegularLAGtoVLAN(test, True)
                 #wait sometime for DUT to build FDB and ARP table
                 res = self.wait_dut(test, TIMEOUT)
+                self.log_dut_status()
                 self.assertTrue(res, "DUT is not ready after {} seconds".format(TIMEOUT))
 
         except Exception as e:
@@ -314,52 +324,69 @@ class Vxlan(BaseTest):
             trace = traceback.format_exc()
             ret = -1
         if ret != 0:
-            print "The warmup failed"
-            print
-            print "Error: %s" % err
-            print
-            print trace
+            self.log("The warmup failed")
+            self.log("Error: %s" % err)
+            self.log(trace)
         else:
-            print "Warmup successful\n"
+            self.log("Warmup successful")
         sys.stdout.flush()
         if ret != 0:
             raise AssertionError("Warmup failed")
 
+    def log_dut_status(self):
+        COMMAND = 'show arp'
+        stdout, stderr, return_code = self.dut_connection.execCommand(COMMAND)
+        self.log("ARP table on DUT \n{}".format(stdout))
+
+        COMMAND = 'fdbshow'
+        stdout, stderr, return_code = self.dut_connection.execCommand(COMMAND)
+        self.log("MAC table on DUT \n{}".format(stdout))
+
+        COMMAND = 'show vxlan tunnel'
+        stdout, stderr, return_code = self.dut_connection.execCommand(COMMAND)
+        self.log("vxlan config on DUT \n{}".format(stdout))
+
     def work_test(self):
-        print "Testing"
+        self.log("Testing")
         err = ''
         trace = ''
         ret = 0
         try:
             for test in self.tests:
-                print test['name']
+                self.log(test['name'])
 
                 res_f, out_f = self.RegularLAGtoVLAN(test)
-                print "  RegularLAGtoVLAN = ", res_f
-                self.assertTrue(res_f, "RegularLAGtoVLAN test failed:\n  %s\n\ntest:\n%s" % (out_f, pformat(test)))
+                self.log("RegularLAGtoVLAN = {} {}".format(res_f, out_f))
+                if not res_f:
+                    self.log_dut_status()
+                self.assertTrue(res_f, "RegularLAGtoVLAN test failed:\n  %s\n" % (out_f))
 
                 res_t, out_t = self.RegularVLANtoLAG(test)
-                print "  RegularVLANtoLAG = ", res_t
-                self.assertTrue(res_t, "RegularVLANtoLAG test failed:\n  %s\n\ntest:\n%s" % (out_t, pformat(test)))
+                self.log("RegularVLANtoLAG = {} {}".format(res_t, out_t))
+                if not res_t:
+                    self.log_dut_status()
+                self.assertTrue(res_t, "RegularVLANtoLAG test failed:\n  %s\n" % (out_t))
 
                 res_v, out_v = self.Vxlan(test)
-                print "  Vxlan            = ", res_v
+                self.log("Vxlan = {} {}".format(res_v, out_v))
                 if self.vxlan_enabled:
-                    self.assertTrue(res_v, "VxlanTest failed:\n  %s\n\ntest:\n%s"  % (out_v, pformat(test)))
+                    if not res_v:
+                        self.log_dut_status()
+                    self.assertTrue(res_v, "VxlanTest failed:\n  %s\n"  % (out_v))
                 else:
-                    self.assertFalse(res_v, "VxlanTest: vxlan works, but it must have been disabled!\n\ntest:%s" % pformat(test))
+                    if res_v:
+                        self.log_dut_status()
+                    self.assertFalse(res_v, "VxlanTest: vxlan works, but it must have been disabled!\n")
         except AssertionError as e:
             err = str(e)
             trace = traceback.format_exc()
             ret = -1
         if ret != 0:
-            print "The test failed"
-            print
-            print "Error: %s" % err
-            print
-            print trace
+            self.log("The test failed")
+            self.log("Error: {}".format(err))
+            self.log(trace)
         else:
-            print "The test was successful"
+            self.log("The test was successful")
         sys.stdout.flush()
         if ret != 0:
             raise AssertionError(err)
@@ -516,5 +543,3 @@ class Vxlan(BaseTest):
             arg = self.nr, nr_rcvd, str(net_port), str(acc_port), src_mac, dst_mac, test['src_ip'], ip_dst, inner_src_mac, inner_dst_mac, inner_src_ip, inner_dst_ip, test['vni']
             out = "sent = %d rcvd = %d | src_port=%s dst_port=%s | src_mac=%s dst_mac=%s src_ip=%s dst_ip=%s | Inner: src_mac=%s dst_mac=%s src_ip=%s dst_ip=%s vni=%s" % arg
         return rv, out
-
-

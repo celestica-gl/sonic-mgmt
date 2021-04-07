@@ -39,6 +39,31 @@ class AdvancedReboot:
             "Please set rebootType var."
         )
 
+        if duthost.facts['platform'] == 'x86_64-kvm_x86_64-r0':
+            # Fast and Warm-reboot procedure now test if "docker exec" works.
+            # The timeout for check_docker_exec test is 1s. This timeout is good
+            # enough for test in physical devices. However, the KVM devices are
+            # inherently slow, and the 1s timeout for check_docker_exec test has
+            # intermittently failed in Azure Pipeline PR tests.
+            # Therefore, the 1s timeout is increased to 5s for KVM testing.
+            # 5s timeout is believed to be generous enough for the KVM device,
+            # however more test results are needed to prove this.
+
+            cmd_format = "sed -i 's/{}/{}/' {}"
+            warmboot_script_path = duthost.shell('which warm-reboot')['stdout']
+            original_line = 'timeout 1s docker exec $container echo "success"'
+            replaced_line = 'timeout 5s docker exec $container echo "success"'
+            replace_cmd = cmd_format.format(original_line, replaced_line, warmboot_script_path)
+            logger.info("Increase docker exec timeout from 1s to 5s in {}".format(warmboot_script_path))
+            duthost.shell(replace_cmd)
+
+            self.kvmTest = True
+            device_marks = [arg for mark in request.node.iter_markers(name='device_type') for arg in mark.args]
+            if 'vs' not in device_marks:
+                pytest.skip('Testcase not supported for kvm')
+        else:
+            self.kvmTest = False
+
         self.request = request
         self.duthost = duthost
         self.ptfhost = ptfhost
@@ -54,7 +79,7 @@ class AdvancedReboot:
         self.vlanMaxCnt = 0
         self.hostMaxCnt = HOST_MAX_COUNT
 
-        self.__buildTestbedData()
+        self.__buildTestbedData(tbinfo)
 
     def __extractTestParam(self):
         '''
@@ -70,6 +95,20 @@ class AdvancedReboot:
         self.cleanupOldSonicImages = self.request.config.getoption("--cleanup_old_sonic_images")
         self.readyTimeout = self.request.config.getoption("--ready_timeout")
         self.replaceFastRebootScript = self.request.config.getoption("--replace_fast_reboot_script")
+        self.postRebootCheckScript = self.request.config.getoption("--post_reboot_check_script")
+        self.bgpV4V6TimeDiff = self.request.config.getoption("--bgp_v4_v6_time_diff")
+
+        # Set default reboot limit if it is not given
+        if self.rebootLimit is None:
+            if self.kvmTest:
+                self.rebootLimit = 200 # Default reboot limit for kvm
+            elif 'warm-reboot' in self.rebootType:
+                if isMellanoxDevice(self.duthost):
+                    self.rebootLimit = 1
+                else:
+                    self.rebootLimit = 0
+            else:
+                self.rebootLimit = 30 # Default reboot limit for physical devices
 
     def getHostMaxLen(self):
         '''
@@ -102,13 +141,12 @@ class AdvancedReboot:
         '''
         return self.tbinfo['topo']['name']
 
-    def __buildTestbedData(self):
+    def __buildTestbedData(self, tbinfo):
         '''
         Build testbed data that are needed by ptf advanced-reboot.ReloadTest class
         '''
-        hostFacts = self.duthost.setup()['ansible_facts']
 
-        self.mgFacts = self.duthost.minigraph_facts(host=self.duthost.hostname)['ansible_facts']
+        self.mgFacts = self.duthost.get_extended_minigraph_facts(tbinfo)
 
         self.rebootData['arista_vms'] = [
             attr['mgmt_addr'] for dev, attr in self.mgFacts['minigraph_devices'].items() if attr['hwsku'] == 'Arista-VM'
@@ -119,7 +157,7 @@ class AdvancedReboot:
         self.vlanMaxCnt = len(self.mgFacts['minigraph_vlans'].values()[0]['members']) - 1
 
         self.rebootData['dut_hostname'] = self.mgFacts['minigraph_mgmt_interface']['addr']
-        self.rebootData['dut_mac'] = hostFacts['ansible_Ethernet0']['macaddress']
+        self.rebootData['dut_mac'] = self.duthost.facts['router_mac']
         self.rebootData['vlan_ip_range'] = self.mgFacts['minigraph_vlan_interfaces'][0]['subnet']
         self.rebootData['dut_vlan_ip'] = self.mgFacts['minigraph_vlan_interfaces'][0]['addr']
 
@@ -256,6 +294,7 @@ class AdvancedReboot:
         Download and install new image to DUT
         '''
         if self.newSonicImage is None:
+            self.newImage = False
             return
 
         self.currentImage = self.duthost.shell('sonic_installer list | grep Current | cut -f2 -d " "')['stdout']
@@ -270,12 +309,19 @@ class AdvancedReboot:
         logger.info('Cleanup sonic images that is not current and/or next')
         if self.cleanupOldSonicImages:
             self.duthost.shell('sonic_installer cleanup -y')
+        if self.binaryVersion == self.currentImage:
+            logger.info("Skipping image installation: new SONiC image is installed and set to current")
+            self.newImage = False
+            return
 
+        self.newImage = True
         logger.info('Installing new SONiC image')
         self.duthost.shell('sonic_installer install -y {0}'.format(tempfile))
 
         logger.info('Remove config_db.json so the new image will reload minigraph')
         self.duthost.shell('rm -f /host/old_config/config_db.json')
+        logger.info('Remove downloaded tempfile')
+        self.duthost.shell('rm -f {}'.format(tempfile))
 
     def __setupTestbed(self):
         '''
@@ -284,7 +330,7 @@ class AdvancedReboot:
         testDataFiles = [
             {'source' : self.mgFacts['minigraph_portchannels'], 'name' : 'portchannel_interfaces'},
             {'source' : self.mgFacts['minigraph_vlans'],        'name' : 'vlan_interfaces'       },
-            {'source' : self.mgFacts['minigraph_port_indices'], 'name' : 'ports'                 },
+            {'source' : self.mgFacts['minigraph_ptf_indices'],  'name' : 'ports'                 },
             {'source' : self.mgFacts['minigraph_devices'],      'name' : 'peer_dev_info'         },
             {'source' : self.mgFacts['minigraph_neighbors'],    'name' : 'neigh_port_info'       },
         ]
@@ -318,6 +364,7 @@ class AdvancedReboot:
         '''
         if rebootOper is None:
             rebootLog = '/tmp/{0}.log'.format(self.rebootType)
+            rebootReport = '/tmp/{0}-report.json'.format(self.rebootType)
             capturePcap = '/tmp/capture.pcap'
             filterPcap = '/tmp/capture_filtered.pcap'
             syslogFile = '/tmp/syslog'
@@ -325,6 +372,7 @@ class AdvancedReboot:
             swssRec = '/tmp/swss.rec'
         else:
             rebootLog = '/tmp/{0}-{1}.log'.format(self.rebootType, rebootOper)
+            rebootReport = '/tmp/{0}-{1}-report.json'.format(self.rebootType, rebootOper)
             capturePcap = '/tmp/capture_{0}.pcap'.format(rebootOper)
             filterPcap = '/tmp/capture_filtered_{0}.pcap'.format(rebootOper)
             syslogFile = '/tmp/syslog_{0}'.format(rebootOper)
@@ -344,6 +392,7 @@ class AdvancedReboot:
         logFiles = {
             self.ptfhost: [
                 {'src': rebootLog, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
+                {'src': rebootReport, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
                 {'src': capturePcap, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
                 {'src': filterPcap, 'dest': '/tmp/', 'flat': True, 'fail_on_missing': False},
             ],
@@ -459,6 +508,7 @@ class AdvancedReboot:
                 "setup_fdb_before_test" : True,
                 "vnet" : self.vnet,
                 "vnet_pkts" : self.vnetPkts,
+                "bgp_v4_v6_time_diff": self.bgpV4V6TimeDiff
             },
             log_file=u'/tmp/advanced-reboot.ReloadTest.log',
             module_ignore_errors=self.moduleIgnoreErrors
@@ -495,11 +545,15 @@ class AdvancedReboot:
 
         self.__runScript(['remove_ip.sh'], self.ptfhost)
 
+        if self.postRebootCheckScript:
+            logger.info('Run the post reboot check script')
+            self.__runScript([self.postRebootCheckScript], self.duthost)
+
         if not self.stayInTargetImage:
             self.__restorePrevImage()
 
 @pytest.fixture
-def get_advanced_reboot(request, duthost, ptfhost, localhost, tbinfo, creds):
+def get_advanced_reboot(request, duthosts, rand_one_dut_hostname, ptfhost, localhost, tbinfo, creds):
     '''
     Pytest test fixture that provides access to AdvancedReboot test fixture
         @param request: pytest request object
@@ -508,6 +562,7 @@ def get_advanced_reboot(request, duthost, ptfhost, localhost, tbinfo, creds):
         @param localhost: Localhost for interacting with localhost through ansible
         @param tbinfo: fixture provides information about testbed
     '''
+    duthost = duthosts[rand_one_dut_hostname]
     instances = []
 
     def get_advanced_reboot(**kwargs):

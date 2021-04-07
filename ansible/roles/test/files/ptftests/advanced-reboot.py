@@ -1,5 +1,5 @@
 #
-#ptf --test-dir ptftests fast-reboot --qlen=1000 --platform remote -t 'verbose=True;dut_username="admin";dut_hostname="10.0.0.243";reboot_limit_in_seconds=30;portchannel_ports_file="/tmp/portchannel_interfaces.json";vlan_ports_file="/tmp/vlan_interfaces.json";ports_file="/tmp/ports.json";dut_mac="4c:76:25:f5:48:80";default_ip_range="192.168.0.0/16";vlan_ip_range="172.0.0.0/22";arista_vms="[\"10.0.0.200\",\"10.0.0.201\",\"10.0.0.202\",\"10.0.0.203\"]"' --platform-dir ptftests --disable-vxlan --disable-geneve --disable-erspan --disable-mpls --disable-nvgre
+# ptf --test-dir ptftests fast-reboot --qlen=1000 --platform remote -t 'verbose=True;dut_username="admin";dut_hostname="10.0.0.243";reboot_limit_in_seconds=30;portchannel_ports_file="/tmp/portchannel_interfaces.json";vlan_ports_file="/tmp/vlan_interfaces.json";ports_file="/tmp/ports.json";dut_mac="4c:76:25:f5:48:80";default_ip_range="192.168.0.0/16";vlan_ip_range="172.0.0.0/22";arista_vms="[\"10.0.0.200\",\"10.0.0.201\",\"10.0.0.202\",\"10.0.0.203\"]"' --platform-dir ptftests --disable-vxlan --disable-geneve --disable-erspan --disable-mpls --disable-nvgre
 #
 #
 # This test checks that DUT is able to make FastReboot procedure
@@ -63,6 +63,7 @@ from operator import itemgetter
 import scapy.all as scapyall
 import itertools
 from device_connection import DeviceConnection
+import multiprocessing
 
 from arista import Arista
 import sad_path as sp
@@ -145,15 +146,16 @@ class ReloadTest(BaseTest):
         self.check_param('min_bgp_gr_timeout', 15, required=False)
         self.check_param('warm_up_timeout_secs', 300, required=False)
         self.check_param('dut_stabilize_secs', 30, required=False)
-        self.check_param('preboot_files', None, required = False)
-        self.check_param('preboot_oper', None, required = False) # preboot sad path to inject before warm-reboot
-        self.check_param('inboot_oper', None, required = False) # sad path to inject during warm-reboot
-        self.check_param('nexthop_ips', [], required = False) # nexthops for the routes that will be added during warm-reboot
-        self.check_param('allow_vlan_flooding', False, required = False)
-        self.check_param('sniff_time_incr', 60, required = False)
-        self.check_param('vnet', False, required = False)
-        self.check_param('vnet_pkts', None, required = False)
-        self.check_param('target_version', '', required = False)
+        self.check_param('preboot_files', None, required=False)
+        self.check_param('preboot_oper', None, required=False) # preboot sad path to inject before warm-reboot
+        self.check_param('inboot_oper', None, required=False) # sad path to inject during warm-reboot
+        self.check_param('nexthop_ips', [], required=False) # nexthops for the routes that will be added during warm-reboot
+        self.check_param('allow_vlan_flooding', False, required=False)
+        self.check_param('sniff_time_incr', 60, required=False)
+        self.check_param('vnet', False, required=False)
+        self.check_param('vnet_pkts', None, required=False)
+        self.check_param('target_version', '', required=False)
+        self.check_param('bgp_v4_v6_time_diff', 40, required=False)
         if not self.test_params['preboot_oper'] or self.test_params['preboot_oper'] == 'None':
             self.test_params['preboot_oper'] = None
         if not self.test_params['inboot_oper'] or self.test_params['inboot_oper'] == 'None':
@@ -167,8 +169,10 @@ class ReloadTest(BaseTest):
 
         if self.sad_oper:
            self.log_file_name = '/tmp/%s-%s.log' % (self.test_params['reboot_type'], self.sad_oper)
+           self.report_file_name = '/tmp/%s-%s.json' % (self.test_params['reboot_type'], self.sad_oper)
         else:
            self.log_file_name = '/tmp/%s.log' % self.test_params['reboot_type']
+           self.report_file_name = '/tmp/%s-report.json' % self.test_params['reboot_type']
         self.log_fp = open(self.log_file_name, 'w')
 
         self.packets_list = []
@@ -224,9 +228,17 @@ class ReloadTest(BaseTest):
         self.dut_connection = DeviceConnection(
             self.test_params['dut_hostname'],
             self.test_params['dut_username'],
-            password=self.test_params['dut_password']
+            password=self.test_params['dut_password'],
+            alt_password=self.test_params.get('alt_password')
         )
 
+        # Check if platform type is kvm
+        stdout, stderr, return_code = self.dut_connection.execCommand("show platform summary | grep Platform | awk '{print $2}'")
+        platform_type = str(stdout[0]).replace('\n', '')
+        if platform_type == 'x86_64-kvm_x86_64-r0':
+            self.kvm_test = True
+        else:
+            self.kvm_test = False
         return
 
     def read_json(self, name):
@@ -290,12 +302,15 @@ class ReloadTest(BaseTest):
             self.log_fp.flush()
 
     def timeout(self, func, seconds, message):
-        async_res = self.pool.apply_async(func)
+        signal = multiprocessing.Event()
+        async_res = self.pool.apply_async(func, args=(signal,))
+
         try:
             res = async_res.get(timeout=seconds)
         except Exception as err:
             # TimeoutError and Exception's from func
             # captured here
+            signal.set()
             raise type(err)(message)
         return res
 
@@ -489,9 +504,12 @@ class ReloadTest(BaseTest):
 
         self.limit = datetime.timedelta(seconds=self.test_params['reboot_limit_in_seconds'])
         self.reboot_type = self.test_params['reboot_type']
-        if self.reboot_type not in ['fast-reboot', 'warm-reboot']:
+        if self.reboot_type not in ['fast-reboot', 'warm-reboot', 'warm-reboot -f']:
             raise ValueError('Not supported reboot_type %s' % self.reboot_type)
         self.dut_mac = self.test_params['dut_mac']
+
+        if self.kvm_test:
+            self.log("This test is for KVM platform")
 
         # get VM info
         if isinstance(self.test_params['arista_vms'], list):
@@ -537,7 +555,7 @@ class ReloadTest(BaseTest):
         self.generate_ping_dut_lo()
         self.generate_arp_ping_packet()
 
-        if self.reboot_type == 'warm-reboot':
+        if 'warm-reboot' in self.reboot_type:
             self.log(self.get_sad_info())
 
             # Pre-generate list of packets to be sent in send_in_background method.
@@ -601,10 +619,6 @@ class ReloadTest(BaseTest):
         s.close()
 
         return ifreq
-
-    def get_mac(self, iff):
-        SIOCGIFHWADDR = 0x8927          # Get hardware address
-        return ':'.join(['%02x' % ord(char) for char in self.get_if(iff, SIOCGIFHWADDR)[18:24]])
 
     @staticmethod
     def hex_to_mac(hex_mac):
@@ -699,9 +713,9 @@ class ReloadTest(BaseTest):
         dst_idx  = random.choice(vlan_port_canadiates)
         src_port = self.vlan_ports[src_idx]
         dst_port = self.vlan_ports[dst_idx]
-        src_mac  = self.get_mac('eth%d' % src_port)
         src_addr = self.host_ip(vlan_ip_range, src_idx)
         dst_addr = self.host_ip(vlan_ip_range, dst_idx)
+        src_mac  = self.hex_to_mac(self.vlan_host_map[src_port][src_addr])
         packet   = simple_arp_packet(eth_src=src_mac, arp_op=1, ip_snd=src_addr, ip_tgt=dst_addr, hw_snd=src_mac)
         expect   = simple_arp_packet(eth_dst=src_mac, arp_op=2, ip_snd=dst_addr, ip_tgt=src_addr, hw_tgt=src_mac)
         self.log("ARP ping: src idx %d port %d mac %s addr %s" % (src_idx, src_port, src_mac, src_addr))
@@ -774,6 +788,57 @@ class ReloadTest(BaseTest):
         watcher = self.pool.apply_async(self.reachability_watcher)
         time.sleep(5)
 
+    def get_warmboot_finalizer_state(self):
+        stdout, stderr, _ = self.dut_connection.execCommand('sudo systemctl is-active warmboot-finalizer.service')
+
+        if not stdout:
+            self.log('Finalizer state not returned from DUT')
+            return ''
+        if stderr:
+            self.fails['dut'].add("stderr from DUT while collecting Finalizer state: %s" % (str(stderr)))
+
+        finalizer_state = stdout[0].strip()
+        return finalizer_state
+
+    def get_now_time(self):
+        stdout, stderr, _ = self.dut_connection.execCommand('date +"%Y-%m-%d %H:%M:%S"')
+        if not stdout:
+            self.fails['dut'].add('Error collecting current date from DUT: empty value returned')
+            raise Exception('Error collecting current date from DUT: empty value returned')
+        if stderr:
+            self.fails['dut'].add("Error collecting current date from DUT: %s" % (str(stderr)))
+            raise Exception('Error collecting current date from DUT: empty value returned')
+        return datetime.datetime.strptime(stdout[0].strip(), "%Y-%m-%d %H:%M:%S")
+
+    def check_warmboot_finalizer(self):
+        dut_datetime = self.get_now_time()
+        self.log('waiting for warmboot-finalizer service to become activating')
+        finalizer_state = self.get_warmboot_finalizer_state()
+        warm_up_timeout_secs = int(self.test_params['warm_up_timeout_secs'])
+        finalizer_timeout = 60 + self.test_params['reboot_limit_in_seconds']
+
+        while finalizer_state != 'activating':
+            dut_datetime_after_ssh = self.get_now_time()
+            time_passed = float(dut_datetime_after_ssh.strftime("%s")) - float(dut_datetime.strftime("%s"))
+            if time_passed > finalizer_timeout:
+                self.fails['dut'].add('warmboot-finalizer never reached state "activating"')
+                raise TimeoutError
+            time.sleep(1)
+            finalizer_state = self.get_warmboot_finalizer_state()
+        self.log('waiting for warmboot-finalizer service to finish')
+        finalizer_state = self.get_warmboot_finalizer_state()
+        self.log('warmboot finalizer service state {}'.format(finalizer_state))
+        count = 0
+        while finalizer_state == 'activating':
+            finalizer_state = self.get_warmboot_finalizer_state()
+            self.log('warmboot finalizer service state {}'.format(finalizer_state))
+            time.sleep(10)
+            if count * 10 > warm_up_timeout_secs:
+                self.fails['dut'].add('warmboot-finalizer.service did not finish')
+                raise TimeoutError
+            count += 1
+        self.log('warmboot-finalizer service finished')
+
     def wait_until_reboot(self):
         self.log("Wait until Control plane is down")
         self.timeout(self.wait_until_cpu_port_down, self.task_timeout, "DUT hasn't shutdown in {} seconds".format(self.task_timeout))
@@ -792,14 +857,17 @@ class ReloadTest(BaseTest):
         self.fails['dut'].clear()
 
         self.log("Wait until control plane up")
-        async_cpu_up = self.pool.apply_async(self.wait_until_cpu_port_up)
+        port_up_signal = multiprocessing.Event()
+        async_cpu_up = self.pool.apply_async(self.wait_until_cpu_port_up, args=(port_up_signal,))
 
         self.log("Wait until data plane stops")
-        async_forward_stop = self.pool.apply_async(self.check_forwarding_stop)
+        forward_stop_signal = multiprocessing.Event()
+        async_forward_stop = self.pool.apply_async(self.check_forwarding_stop, args=(forward_stop_signal,))
 
         try:
             async_cpu_up.get(timeout=self.task_timeout)
         except TimeoutError as e:
+            port_up_signal.set()
             self.log("DUT hasn't bootup in %d seconds" % self.task_timeout)
             self.fails['dut'].add("DUT hasn't booted up in %d seconds" % self.task_timeout)
             raise
@@ -808,6 +876,7 @@ class ReloadTest(BaseTest):
             self.no_routing_start, self.upper_replies = async_forward_stop.get(timeout=self.task_timeout)
             self.log("Data plane was stopped, Waiting until it's up. Stop time: %s" % str(self.no_routing_start))
         except TimeoutError:
+            forward_stop_signal.set()
             self.log("Data plane never stop")
             self.routing_always = True
             self.upper_replies = [self.nr_vl_pkts]
@@ -853,8 +922,9 @@ class ReloadTest(BaseTest):
         for _, q in self.ssh_jobs:
             q.put('quit')
 
-        def wait_for_ssh_threads():
-            while any(thr.is_alive() for thr, _ in self.ssh_jobs):
+        def wait_for_ssh_threads(signal):
+            while any(thr.is_alive() for thr, _ in self.ssh_jobs) and not signal.is_set():
+                self.log('Waiting till SSH threads stop')
                 time.sleep(self.TIMEOUT)
 
             for thr, _ in self.ssh_jobs:
@@ -865,18 +935,13 @@ class ReloadTest(BaseTest):
         self.log("Data plane works again. Start time: %s" % str(self.no_routing_stop))
         self.log("")
 
-        if self.reboot_type == 'fast-reboot':
-            self.no_cp_replies = self.extract_no_cpu_replies(self.upper_replies)
-
         if self.no_routing_stop - self.no_routing_start > self.limit:
             self.fails['dut'].add("Longest downtime period must be less then %s seconds. It was %s" \
                     % (self.test_params['reboot_limit_in_seconds'], str(self.no_routing_stop - self.no_routing_start)))
         if self.no_routing_stop - self.reboot_start > datetime.timedelta(seconds=self.test_params['graceful_limit']):
             self.fails['dut'].add("%s cycle must be less than graceful limit %s seconds" % (self.reboot_type, self.test_params['graceful_limit']))
-        if self.reboot_type == 'fast-reboot' and self.no_cp_replies < 0.95 * self.nr_vl_pkts:
-            self.fails['dut'].add("Dataplane didn't route to all servers, when control-plane was down: %d vs %d" % (self.no_cp_replies, self.nr_vl_pkts))
 
-        if self.reboot_type == 'warm-reboot':
+        if 'warm-reboot' in self.reboot_type:
             if self.total_disrupt_time > self.limit.total_seconds():
                 self.fails['dut'].add("Total downtime period must be less then %s seconds. It was %s" \
                     % (str(self.limit), str(self.total_disrupt_time)))
@@ -892,6 +957,73 @@ class ReloadTest(BaseTest):
             else:
                 # verify there are no interface flaps after warm boot
                 self.neigh_lag_status_check()
+
+        if self.reboot_type == 'fast-reboot':
+            self.no_cp_replies = self.extract_no_cpu_replies(self.upper_replies)
+            if self.no_cp_replies < 0.95 * self.nr_vl_pkts:
+                self.fails['dut'].add("Dataplane didn't route to all servers, when control-plane was down: %d vs %d" % (self.no_cp_replies, self.nr_vl_pkts))
+
+    def handle_advanced_reboot_health_check_kvm(self):
+        self.log("Wait until data plane stops")
+        forward_stop_signal = multiprocessing.Event()
+        async_forward_stop = self.pool.apply_async(self.check_forwarding_stop, args=(forward_stop_signal,))
+
+        self.log("Wait until control plane up")
+        port_up_signal = multiprocessing.Event()
+        async_cpu_up = self.pool.apply_async(self.wait_until_cpu_port_up, args=(port_up_signal,))
+
+        try:
+            self.no_routing_start, _ = async_forward_stop.get(timeout=self.task_timeout)
+            self.log("Data plane was stopped, Waiting until it's up. Stop time: %s" % str(self.no_routing_start))
+        except TimeoutError:
+            forward_stop_signal.set()
+            self.log("Data plane never stop")
+
+        try:
+            async_cpu_up.get(timeout=self.task_timeout)
+            no_control_stop = self.cpu_state.get_state_time('up')
+            self.log("Control plane down stops %s" % str(no_control_stop))
+        except TimeoutError as e:
+            port_up_signal.set()
+            self.log("DUT hasn't bootup in %d seconds" % self.task_timeout)
+            self.fails['dut'].add("DUT hasn't booted up in %d seconds" % self.task_timeout)
+            raise
+
+        # Wait until data plane up if it stopped
+        if self.no_routing_start is not None:
+            self.no_routing_stop, _ = self.timeout(self.check_forwarding_resume,
+                    self.task_timeout,
+                    "DUT hasn't started to work for %d seconds" % self.task_timeout)
+        else:
+            self.no_routing_stop = datetime.datetime.min
+            self.no_routing_start = datetime.datetime.min
+
+        # Stop watching DUT
+        self.watching = False
+
+    def handle_post_reboot_health_check_kvm(self):
+        # wait until all bgp session are established
+        self.log("Wait until bgp routing is up on all devices")
+        for _, q in self.ssh_jobs:
+            q.put('quit')
+
+        def wait_for_ssh_threads(signal):
+            while any(thr.is_alive() for thr, _ in self.ssh_jobs) and not signal.is_set():
+                time.sleep(self.TIMEOUT)
+
+            for thr, _ in self.ssh_jobs:
+                thr.join()
+
+        self.timeout(wait_for_ssh_threads, self.task_timeout, "SSH threads haven't finished for %d seconds" % self.task_timeout)
+
+        self.log("Data plane works again. Start time: %s" % str(self.no_routing_stop))
+        self.log("")
+
+        if self.no_routing_stop - self.no_routing_start > self.limit:
+            self.fails['dut'].add("Longest downtime period must be less then %s seconds. It was %s" \
+                    % (self.test_params['reboot_limit_in_seconds'], str(self.no_routing_stop - self.no_routing_start)))
+        if self.no_routing_stop - self.reboot_start > datetime.timedelta(seconds=self.test_params['graceful_limit']):
+            self.fails['dut'].add("%s cycle must be less than graceful limit %s seconds" % (self.reboot_type, self.test_params['graceful_limit']))
 
     def handle_post_reboot_test_reports(self):
         # Stop watching DUT
@@ -967,6 +1099,14 @@ class ReloadTest(BaseTest):
 
         self.log("="*50)
 
+        self.report = {
+            "downtime": (self.no_routing_stop - self.no_routing_start).total_seconds(),
+            "reboot_time": "0:00:00" if self.no_routing_stop and self.routing_always \
+                else (self.no_routing_stop - self.reboot_start).total_seconds()
+        }
+        with open(self.report_file_name, 'w') as reportfile:
+            json.dump(self.report, reportfile)
+
         self.assertTrue(is_good, errors)
 
     def runTest(self):
@@ -982,12 +1122,21 @@ class ReloadTest(BaseTest):
             thr.setDaemon(True)
             thr.start()
 
+            if 'warm-reboot' in self.reboot_type:
+                thr = threading.Thread(target=self.check_warmboot_finalizer)
+                thr.setDaemon(True)
+                thr.start()
+
             self.wait_until_reboot()
-            if self.reboot_type == 'fast-reboot':
-                self.handle_fast_reboot_health_check()
-            if self.reboot_type == 'warm-reboot':
-                self.handle_warm_reboot_health_check()
-            self.handle_post_reboot_health_check()
+            if self.kvm_test:
+                self.handle_advanced_reboot_health_check_kvm()
+                self.handle_post_reboot_health_check_kvm()
+            else:
+                if self.reboot_type == 'fast-reboot':
+                    self.handle_fast_reboot_health_check()
+                if 'warm-reboot' in self.reboot_type:
+                    self.handle_warm_reboot_health_check()
+                self.handle_post_reboot_health_check()
 
             # Check sonic version after reboot
             self.check_sonic_version_after_reboot()
@@ -1041,11 +1190,14 @@ class ReloadTest(BaseTest):
         time.sleep(self.reboot_delay)
 
         self.log("Rebooting remote side")
-        stdout, stderr, return_code = self.dut_connection.execCommand("sudo " + self.reboot_type)
+        stdout, stderr, return_code = self.dut_connection.execCommand("sudo " + self.reboot_type, timeout=30)
         if stdout != []:
             self.log("stdout from %s: %s" % (self.reboot_type, str(stdout)))
         if stderr != []:
             self.log("stderr from %s: %s" % (self.reboot_type, str(stderr)))
+            self.fails['dut'].add("{} failed with error {}".format(self.reboot_type, stderr))
+            thread.interrupt_main()
+            raise Exception("{} failed with error {}".format(self.reboot_type, stderr))
         self.log("return code from %s: %s" % (self.reboot_type, str(return_code)))
 
         # Note: a timeout reboot in ssh session will return a 255 code
@@ -1065,19 +1217,21 @@ class ReloadTest(BaseTest):
         return stdout, stderr, return_code
 
     def peer_state_check(self, ip, queue):
-        ssh = Arista(ip, queue, self.test_params)
+        self.log('SSH thread for VM {} started'.format(ip))
+        ssh = Arista(ip, queue, self.test_params, log_cb=self.log)
         self.fails[ip], self.info[ip], self.cli_info[ip], self.logs_info[ip] = ssh.run()
+        self.log('SSH thread for VM {} finished'.format(ip))
 
-    def wait_until_cpu_port_down(self):
-        while True:
+    def wait_until_cpu_port_down(self, signal):
+        while not signal.is_set():
             for _, q in self.ssh_jobs:
                 self.put_nowait(q, 'cpu_down')
             if self.cpu_state.get() == 'down':
                 break
             time.sleep(self.TIMEOUT)
 
-    def wait_until_cpu_port_up(self):
-        while True:
+    def wait_until_cpu_port_up(self, signal):
+        while not signal.is_set():
             for _, q in self.ssh_jobs:
                 self.put_nowait(q, 'cpu_up')
             if self.cpu_state.get() == 'up':
@@ -1295,10 +1449,10 @@ class ReloadTest(BaseTest):
             scapyall.wrpcap(filename, packets)
             self.log("Filtered pcap dumped to %s" % filename)
 
-    def check_forwarding_stop(self):
+    def check_forwarding_stop(self, signal):
         self.asic_start_recording_vlan_reachability()
 
-        while True:
+        while not signal.is_set():
             state = self.asic_state.get()
             for _, q in self.ssh_jobs:
                 self.put_nowait(q, 'check_stop')
@@ -1310,8 +1464,8 @@ class ReloadTest(BaseTest):
         self.asic_stop_recording_vlan_reachability()
         return self.asic_state.get_state_time(state), self.get_asic_vlan_reachability()
 
-    def check_forwarding_resume(self):
-        while True:
+    def check_forwarding_resume(self, signal):
+        while not signal.is_set():
             state = self.asic_state.get()
             if state != 'down':
                 break

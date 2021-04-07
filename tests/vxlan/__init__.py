@@ -9,61 +9,6 @@ from vnet_constants import *
 
 logger = logging.getLogger(__name__)
 
-def pytest_addoption(parser):
-    """
-    Adds pytest options that are used by VxLAN tests
-    """
-
-    parser.addoption(
-        "--num_vnet",
-        action="store",
-        default=8,
-        type=int,
-        help="number of VNETs for VNET VxLAN test"
-    )
-
-    parser.addoption(
-        "--num_routes",
-        action="store",
-        default=16000,
-        type=int,
-        help="number of routes for VNET VxLAN test"
-    )
-
-    parser.addoption(
-        "--num_endpoints",
-        action="store",
-        default=4000,
-        type=int,
-        help="number of endpoints for VNET VxLAN"
-    )
-
-    parser.addoption(
-        "--num_intf_per_vnet",
-        action="store",
-        default=1,
-        type=int,
-        help="number of VLAN interfaces per VNET"
-    )
-
-    parser.addoption(
-        "--ipv6_vxlan_test",
-        action="store_true",
-        help="Use IPV6 for VxLAN test"
-    )
-
-    parser.addoption(
-        "--skip_cleanup",
-        action="store_true",
-        help="Do not cleanup after VNET VxLAN test"
-    )
-
-    parser.addoption(
-        "--skip_apply_config",
-        action="store_true",
-        help="Apply new configurations on DUT"
-    )
-
 @pytest.fixture(scope="module")
 def scaled_vnet_params(request):
     """
@@ -108,7 +53,7 @@ def vnet_test_params(request):
     return params
 
 @pytest.fixture(scope="module")
-def minigraph_facts(duthost):
+def minigraph_facts(duthosts, rand_one_dut_hostname, tbinfo):
     """
     Fixture to get minigraph facts
 
@@ -118,8 +63,9 @@ def minigraph_facts(duthost):
     Returns:
         Dictionary containing minigraph information
     """
+    duthost = duthosts[rand_one_dut_hostname]
 
-    return duthost.minigraph_facts(host=duthost.hostname)["ansible_facts"]
+    return duthost.get_extended_minigraph_facts(tbinfo)
 
 @pytest.fixture(scope="module")
 def vnet_config(minigraph_facts, vnet_test_params, scaled_vnet_params):
