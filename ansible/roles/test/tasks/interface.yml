@@ -18,7 +18,6 @@
 
   - include_tasks: resume_fanout_ports.yml
     with_items: "{{ ansible_interface_link_down_ports }}"
-    ignore_errors: yes
 
   - name: pause and wait interface to be up
     pause: seconds=30
@@ -33,23 +32,24 @@
 - debug: msg="Found link down ports {{ansible_interface_link_down_ports}}"
   when: ansible_interface_link_down_ports | length > 0
 
-- name: Verify interfaces are up correctly
-  assert: { that: "{{ ansible_interface_link_down_ports | length }} == 0" }
+- block:
+  - name: Verify interfaces are up correctly
+    assert: { that: "{{ ansible_interface_link_down_ports | length }} == 0" }
 
-  #rescue:
-  #- include: check_fanout_interfaces.yml
-  #  vars:
-  #    check_fanout: true
+  rescue:
+  - include_tasks: check_fanout_interfaces.yml
+    vars:
+      check_fanout: true
 
-  #- fail: msg="Not all interfaces are up"
-  
+  - fail: msg="Not all interfaces are up"
+
 - block:
   - name: Verify port channel interfaces are up correctly
     assert: { that: "'{{ ansible_interface_facts[item]['active'] }}' == 'True'" }
     with_items: "{{ minigraph_portchannels.keys() }}"
 
   rescue:
-  - include: check_sw_vm_interfaces.yml
+  - include_tasks: check_sw_vm_interfaces.yml
     vars:
       check_vms: true
 
@@ -61,3 +61,8 @@
 - name: Verify VLAN interfaces are up correctly
   assert: { that: "'{{ ansible_interface_facts[item]['active'] }}' == 'True'" }
   with_items: "{{ minigraph_vlans.keys() }}"
+
+# TODO: uncomment when issue https://github.com/Azure/sonic-buildimage/issues/2738 will be fixed
+# and PR https://github.com/Azure/sonic-mgmt/pull/1165 will be merged
+# - name: Verify interfaces counters
+#   include: interface_counters.yml

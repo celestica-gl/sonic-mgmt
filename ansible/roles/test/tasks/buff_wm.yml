@@ -4,7 +4,7 @@
   shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
 # buffer pool watermark test
-- include: qos_sai_ptf.yml
+- include_tasks: qos_sai_ptf.yml
   vars:
     test_name: Ingress buffer pool watermark test, lossless traffic
     test_path: sai_qos_tests.BufferPoolWatermarkTest
@@ -35,7 +35,7 @@
   shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
 # buffer pool watermark test
-- include: qos_sai_ptf.yml
+- include_tasks: qos_sai_ptf.yml
   vars:
     test_name: Egress buffer pool watermark test, lossless traffic
     test_path: sai_qos_tests.BufferPoolWatermarkTest
@@ -62,7 +62,7 @@
   shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
 # buffer pool watermark test
-- include: qos_sai_ptf.yml
+- include_tasks: qos_sai_ptf.yml
   vars:
     test_name: Ingress buffer pool watermark test, lossy traffic
     test_path: sai_qos_tests.BufferPoolWatermarkTest
@@ -93,7 +93,7 @@
   shell: bash -c 'counterpoll watermark enable; sleep 20; counterpoll watermark disable'
 
 # buffer pool watermark test
-- include: qos_sai_ptf.yml
+- include_tasks: qos_sai_ptf.yml
   vars:
     test_name: Egress buffer pool watermark test, lossy traffic
     test_path: sai_qos_tests.BufferPoolWatermarkTest

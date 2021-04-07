@@ -1,6 +1,6 @@
 # Software for Open Networking in the Cloud - SONiC
 # Management
-# cls test
+
 # Description
 Tools for managing, configuring and monitoring SONiC
 

@@ -141,9 +141,7 @@ function setup_test_options()
 
         PRET_LOGGING_OPTIONS="--junit-xml=${LOG_PATH}/pretest.xml --log-file=${LOG_PATH}/pretest.log"
         POST_LOGGING_OPTIONS="--junit-xml=${LOG_PATH}/posttest.xml --log-file=${LOG_PATH}/posttest.log"
-        # TEST_LOGGING_OPTIONS="--junit-xml=${LOG_PATH}/tr.xml --log-file=${LOG_PATH}/test.log"
-        TEST_LOGGING_OPTIONS="--html=${LOG_PATH}/result.html --log-file=${LOG_PATH}/test.log"
-
+        TEST_LOGGING_OPTIONS="--junit-xml=${LOG_PATH}/tr.xml --log-file=${LOG_PATH}/test.log"
     fi
     UTIL_TOPOLOGY_OPTIONS="--topology util"
     if [[ -z ${TOPOLOGY} ]]; then
@@ -196,7 +194,7 @@ function run_debug_tests()
 function prepare_dut()
 {
     echo "=== Preparing DUT for subsequent tests ==="
-    pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -m pretest -v
+    pytest ${PYTEST_UTIL_OPTS} ${PRET_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -m pretest
 
     # Give some delay for the newly announced routes to propagate.
     sleep 120
@@ -205,13 +203,13 @@ function prepare_dut()
 function cleanup_dut()
 {
     echo "=== Cleaning up DUT after tests ==="
-    pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -m posttest -v
+    pytest ${PYTEST_UTIL_OPTS} ${POST_LOGGING_OPTIONS} ${UTIL_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -m posttest
 }
 
 function run_group_tests()
 {
     echo "=== Running tests in groups ==="
-    pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -v
+    pytest ${TEST_CASES} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
 }
 
 function run_individual_tests()
@@ -227,11 +225,10 @@ function run_individual_tests()
             if [[ ${test_dir} != "." ]]; then
                 mkdir -p ${LOG_PATH}/${test_dir}
             fi
-            # TEST_LOGGING_OPTIONS="--log-file ${LOG_PATH}/${test_dir}/${test_name}.log --junitxml=${LOG_PATH}/${test_dir}/${test_name}.xml"
-            TEST_LOGGING_OPTIONS="--log-file ${LOG_PATH}/${test_dir}/${test_name}.log --html=${LOG_PATH}/result.html"
+            TEST_LOGGING_OPTIONS="--log-file ${LOG_PATH}/${test_dir}/${test_name}.log --junitxml=${LOG_PATH}/${test_dir}/${test_name}.xml"
         fi
 
-        pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS} -v
+        pytest ${test_script} ${PYTEST_COMMON_OPTS} ${TEST_LOGGING_OPTIONS} ${TEST_TOPOLOGY_OPTIONS} ${EXTRA_PARAMETERS}
         ret_code=$?
 
         # If test passed, no need to keep its log.
@@ -333,5 +330,4 @@ if [[ x"${TEST_METHOD}" != x"debug" && x"${BYPASS_UTIL}" == x"False" ]]; then
     cleanup_dut
 fi
 
-# run_debug_tests
 exit ${RC}

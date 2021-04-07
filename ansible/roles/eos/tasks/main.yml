@@ -1,5 +1,5 @@
-- name: Set ansible login user name and password
-  set_fact: ansible_user="root" ansible_password={{ eos_root_password }}
+- debug: msg="{{ vm_type }}"
+- debug: msg="{{ vm_set_name }}"
 
 - name: Load topo variables
   include_vars: "vars/topo_{{ topo }}.yml"
@@ -11,7 +11,7 @@
   set_fact: current_server={{ group_names | extract_by_prefix('server_') }}
 
 - name: Extract VM names from the inventory
-  set_fact: VM_list={{ groups[current_server] | filter_by_prefix('VM') }}
+  set_fact: VM_list={{ groups[current_server] | filter_by_prefix('VM') | sort }}
 
 - name: Get VM host name
   set_fact: VM_host={{ groups[current_server] | difference(VM_list) }}
@@ -24,15 +24,6 @@
     msg: "cannot find {{ inventory_hostname }} in the topology"
   when: hostname == "hostname not found"
 
-- name: Get VM front panel interface number
-  shell: virsh domiflist {{ inventory_hostname }} | grep -E "^{{ inventory_hostname }}-t" | wc -l
-  register: fp_num
-  delegate_to: "{{ VM_host[0] }}"
-  become: yes
-
-- name: Set EOS backplane port name
-  set_fact: bp_ifname="Ethernet{{ fp_num.stdout|int + 1 }}"
-
 - name: Set properties list to default value, when properties are not defined
   set_fact: properties_list=[]
   when: configuration is not defined or configuration[hostname] is not defined or configuration[hostname]['properties'] is not defined
@@ -41,34 +32,13 @@
   set_fact: properties_list="{{ configuration[hostname]['properties'] }}"
   when: configuration and configuration[hostname] and configuration[hostname]['properties'] is defined
 
-- name: copy boot-config
-  copy: src=boot-config
-        dest=/mnt/flash/boot-config
-
 - name: Expand {{ hostname }} properties into props
   set_fact: props="{{ configuration_properties[item] | combine(props | default({})) }}"
   with_items: "{{ properties_list }}"
   when: hostname in configuration and configuration_properties[item] is defined
 
-- name: build a startup config
-  template: src="{{ topo }}-{{ props.swrole }}.j2"
-            dest=/mnt/flash/startup-config
-  when: hostname in configuration
+- include_tasks: veos.yml
+  when: vm_type == "veos"
 
-- name: Restart the box
-  command: /sbin/shutdown -r now "Ansible updates triggered"
-  when: hostname in configuration
-
-- name: Pause for reboot
-  pause: seconds=30
-  when: hostname in configuration
-
-- name: Wait for VM to come up
-  wait_for:
-    host: "{{ ansible_ssh_host }}"
-    port: 22
-    state: started
-    delay: 10
-    timeout: 600
-  connection: local
-  when: hostname in configuration
+- include_tasks: ceos.yml
+  when: vm_type == "ceos"
