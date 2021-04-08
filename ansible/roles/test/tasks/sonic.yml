@@ -58,6 +58,7 @@
 
     - fail: msg="The DUT you are trying to run test does not belongs to this testbed"
       when: testbed_facts['dut'] != inventory_hostname
+      debugger: on_failed
 
     - name: set testbed_type
       set_fact:

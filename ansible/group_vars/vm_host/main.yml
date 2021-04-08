@@ -4,7 +4,7 @@ cd_image_filename: Aboot-veos-serial-8.0.0.iso
 hdd_image_filename: vEOS-lab-4.15.10M.vmdk
 skip_image_downloading: True
 
-vm_console_base: 7000
+vm_console_base: 7123
 memory: 2097152
 max_fp_num: 4
 

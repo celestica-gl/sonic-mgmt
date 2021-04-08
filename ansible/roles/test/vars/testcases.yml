@@ -14,7 +14,7 @@ testcases:
 
     bgp_fact:
       filename: bgp_fact.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag,t1-slx, t1-64-lag-clet]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag,t1-slx, t1-64-lag-clet]
 
     bgp_gr_helper:
       filename: bgp_gr_helper.yml
@@ -29,18 +29,18 @@ testcases:
 
     bgp_speaker:
       filename: bgp_speaker.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx,t0-e1031]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx,t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           testbed_type:
 
     config:
         filename: config.yml
-        topologies: [t1-lag, t1-64-lag, t1-64-lag-clet, t0, t0-64, t0-116,t0-slx, t0-e1031]
+        topologies: [t1-lag, t1-64-lag, t1-64-lag-clet, t0, t0-64, t0-116,t0-slx, t0-e1031, t0-sil]
 
     continuous_reboot:
       filename: continuous_reboot.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx,t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx,t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
 
     copp:
       filename: copp.yml
@@ -50,7 +50,7 @@ testcases:
 
     decap:
       filename: decap.yml
-      topologies: [t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, t0, t0-52, t0-56, t0-64, t0-116,t0-slx, t0-e1031]
+      topologies: [t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, t0, t0-52, t0-56, t0-64, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           testbed_type:
@@ -58,13 +58,13 @@ testcases:
 
     dhcp_relay:
       filename: dhcp_relay.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
 
     ecn_wred:
       filename: ecn_wred.yml
-      topologies: [t0, t1,t0-slx, t0-e1031, t1,t1-slx, t1-lag]
+      topologies: [t0, t1,t0-slx, t0-e1031, t1,t1-slx, t1-lag, t0-sil]
 
     everflow_testbed:
       filename: everflow_testbed.yml
@@ -75,35 +75,35 @@ testcases:
 
     fast-reboot:
       filename: fast-reboot.yml
-      topologies: [t0, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
 
     warm-reboot:
       filename: warm-reboot.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
 
     warm-reboot-sad:
       filename: warm-reboot-sad.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
 
     warm-reboot-multi-sad:
       filename: warm-reboot-multi-sad.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
 
     warm-reboot-multi-sad-inboot:
       filename: warm-reboot-multi-sad-inboot.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
@@ -111,7 +111,7 @@ testcases:
     warm-reboot-sad-bgp:
       filename: warm-reboot-sad-bgp.yml
       vtestbed_compatible: no
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
@@ -119,7 +119,7 @@ testcases:
     warm-reboot-sad-lag:
       filename: warm-reboot-sad-lag.yml
       vtestbed_compatible: no
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
@@ -127,7 +127,7 @@ testcases:
     warm-reboot-sad-lag-member:
       filename: warm-reboot-sad-lag-member.yml
       vtestbed_compatible: no
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
@@ -135,35 +135,35 @@ testcases:
     warm-reboot-sad-vlan-port:
       filename: warm-reboot-sad-vlan-port.yml
       vtestbed_compatible: no
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-56,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           vm_hosts:
 
     fib:
       filename: simple-fib.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
       required_vars:
           ptf_host:
           testbed_type:
 
     warm-reboot-fib:
       filename: warm-reboot-fib.yml
-      topologies: [t0, t0-16, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
+      topologies: [t0, t0-16, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
       required_vars:
           ptf_host:
           testbed_type:
 
     fdb:
       filename: fdb.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           testbed_type:
 
     fdb_mac_expire:
       filename: fdb_mac_expire.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           fdb_aging_time:
           ptf_host:
@@ -171,29 +171,29 @@ testcases:
 
     dir_bcast:
       filename: dir_bcast.yml
-      topologies: [t0, t0-16, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031]
+      topologies: [t0, t0-16, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           testbed_type:
 
     lag_2:
       filename: lag_2.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t1-lag, t1-64-lag, t1-64-lag-clet]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,t0-slx, t0-e1031, t0-sil, t1-lag, t1-64-lag, t1-64-lag-clet]
       required_vars:
           ptf_host:
           testbed_type:
 
     lldp:
       filename: lldp.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-116, t0-64-32, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-116, t0-64-32, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
 
     link_flap:
       filename: link_flap.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     mem_check:
       filename: mem_check.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     mtu:
       filename: mtu.yml
@@ -210,19 +210,19 @@ testcases:
 
     neighbour_mac_noptf:
       filename: neighbour-mac-noptf.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     ntp:
       filename: ntp.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     pfc_wd:
       filename: pfc_wd.yml
-      topologies: [t0, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     port_toggle:
       filename: port_toggle.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     qos:
       filename: qos.yml
@@ -234,77 +234,77 @@ testcases:
 
     reboot:
       filename: reboot.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     repeat_harness:
       filename: repeat_harness.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     restart_swss:
       filename: run_config_cleanup.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     restart_swss_service:
       filename: restart_swss.yml
-      topologies: [t0, t0-16, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-16, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     restart_syncd:
       filename: restart_syncd.yml
-      topologies: [t0, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     sensors:
       filename: sensors_check.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     service_acl:
       filename: service_acl.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     snmp:
       filename: snmp.yml
-      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-52, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     syslog:
       filename: syslog.yml
-      topologies: [t0, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
+      topologies: [t0, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet, ptf32, ptf64]
 
     vlan:
       filename: vlantb.yml
-      topologies: [t0, t0-16, t0-116, t0-slx, t0-e1031]
+      topologies: [t0, t0-16, t0-116, t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
           testbed_type:
 
     crm:
       filename: crm.yml
-      topologies: [ t0-slx, t0-e1031, t1,t1-slx, t1-lag, t0, t0-52, t0-56, t0-64, t0-116]
+      topologies: [ t0-slx, t0-e1031, t1,t1-slx, t1-lag, t0, t0-52, t0-56, t0-64, t0-116, t0-sil]
 
     dip_sip:
       filename: dip_sip.yml
-      topologies: [t0, t0-16, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
+      topologies: [t0, t0-16, t0-56, t0-64, t0-64-32, t0-116,  t0-slx, t0-e1031, t0-sil, t1,t1-slx, t1-lag, t1-64-lag, t1-64-lag-clet]
       required_vars:
           ptf_host:
           testbed_type:
 
     vxlan_decap:
       filename: vxlan-decap.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
 
     wr_arp:
       filename: wr_arp.yml
-      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031]
+      topologies: [t0, t0-16, t0-52, t0-56, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil]
       required_vars:
           ptf_host:
 
     pfc_asym:
       filename: pfc_asym.yml
-      topologies: [t0, t0-slx, t0-e1031]
+      topologies: [t0, t0-slx, t0-e1031, to-sil]
 
     iface_mode:
       filename: iface_naming_mode.yml
-      topologies: [t0, t0-16, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031,t1, t1-slx,ptf32, ptf64]
+      topologies: [t0, t0-16, t0-64, t0-64-32, t0-116, t0-slx, t0-e1031, t0-sil, t1, t1-slx,ptf32, ptf64]
       required_vars:
           testbed_type:
 
