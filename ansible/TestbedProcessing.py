@@ -124,7 +124,9 @@ def makeMain(data, outfile):
         "memory": veos.get("memory"),
         "max_fp_num": veos.get("max_fp_num"),
         "ptf_bp_ip": veos.get("ptf_bp_ip"),
-        "ptf_bp_ipv6": veos.get("ptf_bp_ipv6")
+        "ptf_bp_ipv6": veos.get("ptf_bp_ipv6"),
+        "supported_vm_types": veos.get("supported_vm_types"),
+        "sonic_image_filename": veos.get("sonic_image_filename")
     }
     proxy = {
         "proxy_env": {
@@ -150,7 +152,7 @@ def makeVMHostCreds(data, outfile):
     result = {
         "ansible_user": veos.get("vm_host_ansible").get("ansible_user"),
         "ansible_password": veos.get("vm_host_ansible").get("ansible_password"),
-        "ansible_become_pass": veos.get("vm_host_ansible").get("ansible_become_pass")
+        "ansible_become_password": veos.get("vm_host_ansible").get("ansible_become_password")
     }
     with open(outfile, "w") as toWrite:
         toWrite.write("---\n")
