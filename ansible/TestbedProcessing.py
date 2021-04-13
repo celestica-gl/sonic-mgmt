@@ -201,7 +201,7 @@ generates /testbed.csv by pulling confName, groupName, topo, ptf_image_name, ptf
 error handling: checks if attribute values are None type or string "None"
 """
 def makeTestbed(data, outfile):
-    csv_columns = "# conf-name,group-name,topo,ptf_image_name,ptf,ptf_ip,ptf_ipv6,server,vm_base,dut,comment"
+    csv_columns = "# conf-name,group-name,topo,ptf_image_name,ptf,ptf_ip,ptf_ipv6,server,vm_base,dut,inv_name,auto_recover,comment"
     topology = data
     csv_file = outfile
 
@@ -219,6 +219,8 @@ def makeTestbed(data, outfile):
                 vm_base = groupDetails.get("vm_base")
                 dut = groupDetails.get("dut")
                 ptf = groupDetails.get("ptf")
+                inv_name = groupDetails.get("inv_name")
+                auto_recover = groupDetails.get("auto_recover")
                 comment = groupDetails.get("comment")
 
                 # catch empty types
@@ -240,10 +242,16 @@ def makeTestbed(data, outfile):
                     dut = ""
                 if not ptf:
                     ptf = ""
+                if not inv_name:
+                    inv_name = ""
+                if not auto_recover:
+                    auto_recover = ""
+                else:
+                    auto_recover = str(auto_recover)
                 if not comment:
                     comment = ""
 
-                row = confName + "," + groupName + "," + topo + "," + ptf_image_name + "," + ptf + "," + ptf_ip + "," + ptf_ipv6 + ","+ server + "," + vm_base + "," + dut + "," + comment
+                row = confName + "," + groupName + "," + topo + "," + ptf_image_name + "," + ptf + "," + ptf_ip + "," + ptf_ipv6 + ","+ server + "," + vm_base + "," + dut + "," + inv_name + "," + auto_recover + "," + comment
                 f.write(row + "\n")
     except IOError:
         print("I/O error: issue creating testbed.csv")
@@ -506,6 +514,10 @@ def updateDockerRegistry(docker_registry, outfile):
             toWrite.write("\n\n")
 
 
+def makeLabconnection_file():
+    import subprocess
+    print(subprocess.call("cd files/ && python creategraph.py -o lab_connection_graph.xml -c None -p None ", shell=True))
+
 def main():
     print("PROCESS STARTED")
     ##############################################################
@@ -574,6 +586,8 @@ def main():
     print("UPDATING FILES FROM CONFIG FILE")
     print("\tUPDATING DOCKER REGISTRY")
     updateDockerRegistry(docker_registry, args.basedir + dockerRegistry_file)
+    print("\t CREATING file lab_connection_graph.xml")
+    makeLabconnection_file()
     print("PROCESS COMPLETED")
 
 

@@ -286,6 +286,8 @@ testbed:
         server: server_2                                    # source: sonic-mgmt/ansible/testbed.csv
         vm_base: VM0200                                           # source: sonic-mgmt/ansible/testbed.csv
         dut: cel-seastone-01                                 # source: sonic-mgmt/ansible/testbed.csv
+        inv_name: lab
+        auto_recover: True
         comment: Tests CELESTICA SEASTONE                          # source: sonic-mgmt/ansible/testbed.csv
 
 
