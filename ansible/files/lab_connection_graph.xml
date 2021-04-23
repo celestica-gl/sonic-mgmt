@@ -2,8 +2,9 @@
   <PhysicalNetworkGraphDeclaration>
     <Devices>
       <Device Hostname="cel-seastone-01" HwSku="Celestica-DX010-C32" Type="DevSonic"/>
-      <Device Hostname="str-acs-serv-01" HwSku="TestServ" Type="server"/>
+      <Device Hostname="ptf2" HwSku="" Type="blank"/>
       <Device Hostname="str-acs-serv-02" HwSku="TestServ" Type="server"/>
+      <Device Hostname="str-acs-serv-01" HwSku="TestServ" Type="server"/>
       <Device Hostname="seastone-fanout" HwSku="Celestica-DX010-C32" Type="FanoutLeaf"/>
     </Devices>
     <DeviceInterfaceLinks>
@@ -45,10 +46,10 @@
     <DevicesL3Info Hostname="cel-seastone-01">
       <ManagementIPInterface Name="ManagementIp" Prefix="10.251.0.100/23"/>
     </DevicesL3Info>
-    <DevicesL3Info Hostname="str-acs-serv-01">
+    <DevicesL3Info Hostname="str-acs-serv-02">
       <ManagementIPInterface Name="ManagementIp" Prefix="10.251.0.245/23"/>
     </DevicesL3Info>
-    <DevicesL3Info Hostname="str-acs-serv-02">
+    <DevicesL3Info Hostname="str-acs-serv-01">
       <ManagementIPInterface Name="ManagementIp" Prefix="10.251.0.245/23"/>
     </DevicesL3Info>
     <DevicesL3Info Hostname="seastone-fanout">

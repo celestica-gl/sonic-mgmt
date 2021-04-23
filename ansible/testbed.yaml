@@ -4,7 +4,7 @@
   group-name: ptf2
   topo: t0-slx
   ptf_image_name: docker-ptf
-  ptf: ''
+  ptf: ptf2
   ptf_ip: 10.251.0.110/24
   ptf_ipv6:
   server: server_2

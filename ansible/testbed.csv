@@ -1,2 +1,2 @@
 # conf-name,group-name,topo,ptf_image_name,ptf,ptf_ip,ptf_ipv6,server,vm_base,dut,inv_name,auto_recover,comment
-cel_slx_t0,ptf2,t0-slx,docker-ptf,,10.251.0.110/24,,server_2,VM0200,cel-seastone-01,lab,True,Tests CELESTICA SEASTONE
+cel_slx_t0,ptf2,t0-slx,docker-ptf,ptf2,10.251.0.110/24,,server_2,VM0200,cel-seastone-01,lab,True,Tests CELESTICA SEASTONE

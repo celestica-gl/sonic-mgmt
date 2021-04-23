@@ -390,20 +390,20 @@ def makeLab(data, devices, testbed, outfile):
 
                     if "ptf" in key:
                         try: #get ansible host
-                            ansible_host = testbed.get(host).get("ansible").get("ansible_host")
+                            ansible_host = devices.get(host).get("ansible").get("ansible_host")
                             entry += "\tansible_host=" + ansible_host.split("/")[0]
                         except:
                             print("\t\t" + host + ": ansible_host not found")
 
                         if ansible_host:
                             try: # get ansible ssh username
-                                ansible_ssh_user = testbed.get(host.lower()).get("ansible").get("ansible_ssh_user")
+                                ansible_ssh_user = devices.get(host.lower()).get("ansible").get("ansible_ssh_user")
                                 entry += "\tansible_ssh_user=" + ansible_ssh_user
                             except:
                                 print("\t\t" + host + ": ansible_ssh_user not found")
 
                             try: # get ansible ssh pass
-                                ansible_ssh_pass = testbed.get(host.lower()).get("ansible").get("ansible_ssh_pass")
+                                ansible_ssh_pass = devices.get(host.lower()).get("ansible").get("ansible_ssh_pass")
                                 entry += "\tansible_ssh_pass=" + ansible_ssh_pass
                             except:
                                 print("\t\t" + host + ": ansible_ssh_pass not found")

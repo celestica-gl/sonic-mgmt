@@ -1,5 +1,6 @@
 Hostname,ManagementIp,HwSku,Type
 cel-seastone-01,10.251.0.100/23,Celestica-DX010-C32,DevSonic
-str-acs-serv-01,10.251.0.245/23,TestServ,server
+ptf2,10.251.0.110/23,,blank
 str-acs-serv-02,10.251.0.245/23,TestServ,server
+str-acs-serv-01,10.251.0.245/23,TestServ,server
 seastone-fanout,10.251.0.235/23,Celestica-DX010-C32,FanoutLeaf

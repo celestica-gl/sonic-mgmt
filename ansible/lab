@@ -19,6 +19,5 @@ fanout
 mgmt_subnet_mask_length=24
 
 [ptf]
-ptf_ptf1
-ptf2
+ptf2	ansible_host=10.251.0.110	ansible_ssh_user=root	ansible_ssh_pass=root
 

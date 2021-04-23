@@ -60,7 +60,7 @@ device_groups:
     fanout:
         host: [seastone-fanout]         # source: sonic-mgmt/ansible/lab
     ptf:
-        host: [ptf_ptf1, ptf2]                             # source: sonic-mgmt/ansible/lab
+        host: [ptf2]                             # source: sonic-mgmt/ansible/lab
 
 # devices is a dictionary that contains all devices and hosts but not ptfs (ptfs found under testbed)
 # devices is used to export sonic_lab_devices, fanout/secrets, lab/secrets, lab
@@ -93,6 +93,18 @@ devices:
             fanout_sonic_user: admin                # source: sonic-mgmt/ansible/group_vars/fanout/secrets.yml
             fanout_sonic_password: password         # source: sonic-mgmt/ansible/group_vars/fanout/secrets.yml
 
+    ptf2:                           
+        device_type: blank                  # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
+        hwsku:                   # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
+        alias:             
+        credentials:                        
+            username: 
+            password: 
+        ansible:
+            ansible_host: 10.251.0.110/23           # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
+            ansible_ssh_user: root                 # source: sonic-mgmt/ansible/group_vars/fanout/secrets.yml
+            ansible_ssh_pass: root              # source: sonic-mgmt/ansible/group_vars/fanout/secrets.yml
+    
     str-acs-serv-01:                                # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
         device_type: server                         # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
         hwsku: TestServ                             # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
@@ -280,7 +292,7 @@ testbed:
         group-name: ptf2                                    # source: sonic-mgmt/ansible/testbed.csv
         topo: t0-slx                                            # source: sonic-mgmt/ansible/testbed.csv
         ptf_image_name: docker-ptf                         # source: sonic-mgmt/ansible/testbed.csv
-        ptf: 
+        ptf: ptf2
         ptf_ipv6:
         ptf_ip: 10.251.0.110/24                             # source: sonic-mgmt/ansible/testbed.csv
         server: server_2                                    # source: sonic-mgmt/ansible/testbed.csv
