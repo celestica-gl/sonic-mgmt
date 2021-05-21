@@ -28,7 +28,9 @@ topology:
     - 25
     - 26
   disabled_host_interfaces:
-    - 27
+    - 0
+    - 25
+    - 26
   VMs:
     ARISTA01T1:
       vlans:
