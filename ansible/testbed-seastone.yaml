@@ -223,7 +223,7 @@ veos:
         VM0105:
             ansible_host: 10.251.0.7
         VM0106:
-            ansible_host: 10.250.0.8
+            ansible_host: 10.251.0.8
         VM0107:
             ansible_host: 10.251.0.9
         VM0108:
@@ -302,6 +302,19 @@ testbed:
         auto_recover: True
         comment: Tests CELESTICA SEASTONE                          # source: sonic-mgmt/ansible/testbed.csv
 
+    cel_slx_t1:
+        group-name: ptf2                                    # source: sonic-mgmt/ansible/testbed.csv
+        topo: t1-slx                                            # source: sonic-mgmt/ansible/testbed.csv
+        ptf_image_name: docker-ptf                         # source: sonic-mgmt/ansible/testbed.csv
+        ptf: ptf2
+        ptf_ipv6:
+        ptf_ip: 10.251.0.110/24                             # source: sonic-mgmt/ansible/testbed.csv
+        server: server_1                                    # source: sonic-mgmt/ansible/testbed.csv
+        vm_base: VM0100                                           # source: sonic-mgmt/ansible/testbed.csv
+        dut: cel-seastone-01                                 # source: sonic-mgmt/ansible/testbed.csv
+        inv_name: lab
+        auto_recover: True
+        comment: Tests CELESTICA SEASTONE                          # source: sonic-mgmt/ansible/testbed.csv
 
 
 # topology dictionary contains information about the topology (which device ports connect to each other)
