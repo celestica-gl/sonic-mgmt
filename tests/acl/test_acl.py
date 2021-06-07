@@ -106,6 +106,7 @@ def setup(duthosts, rand_one_dut_hostname, tbinfo, ptfadapter):
 
     mg_facts = duthost.get_extended_minigraph_facts(tbinfo)
 
+
     # Get the list of upstream/downstream ports
     downstream_ports = defaultdict(list)
     upstream_ports =  defaultdict(list)
@@ -128,7 +129,7 @@ def setup(duthosts, rand_one_dut_hostname, tbinfo, ptfadapter):
     # TODO: We should make this more robust (i.e. bind all active front-panel ports)
     acl_table_ports =  defaultdict(list)
 
-    if topo == "t0" or tbinfo["topo"]["name"] in ("t1", "t1-lag"):
+    if topo == "t0" or tbinfo["topo"]["name"] in ("t1-slx", "t1", "t1-lag"):
         for namespace, port in downstream_ports.iteritems():
             acl_table_ports[namespace] += port
             # In multi-asic we need config both in host and namespace.
@@ -272,7 +273,8 @@ def create_or_remove_acl_table(duthost, acl_table_config, setup, op):
         else:
             logger.info("Removing ACL table \"{}\" in namesspace {}".format(acl_table_config["table_name"], namespace))
             sonic_host_or_asic_inst.command("config acl remove table {}".format(acl_table_config["table_name"]))
-
+    import time
+    time.sleep(10)
 @pytest.fixture(scope="module")
 def acl_table(duthosts, rand_one_dut_hostname, setup, stage, ip_version, backup_and_restore_config_db_module):
     """Apply ACL table configuration and remove after tests.
@@ -305,10 +307,12 @@ def acl_table(duthosts, rand_one_dut_hostname, setup, stage, ip_version, backup_
     loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix="acl")
     loganalyzer.load_common_config()
 
+
     try:
         loganalyzer.expect_regex = [LOG_EXPECT_ACL_TABLE_CREATE_RE]
         with loganalyzer:
             create_or_remove_acl_table(duthost, acl_table_config, setup, "add")
+
     except LogAnalyzerError as err:
         # Cleanup Config DB if table creation failed
         logger.error("ACL table creation failed, attempting to clean-up...")
@@ -373,6 +377,8 @@ class BaseAclTest(object):
         # Remove the rules
         logger.info("Applying \"{}\"".format(remove_rules_dut_path))
         dut.command("config acl update full {}".format(remove_rules_dut_path))
+        import time
+        time.sleep(10)
 
     @pytest.fixture(scope="class", autouse=True)
     def acl_rules(self, duthosts, rand_one_dut_hostname, localhost, setup, acl_table, populate_vlan_arp_entries, tbinfo, ip_version):
