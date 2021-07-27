@@ -124,7 +124,9 @@ def makeMain(data, outfile):
         "memory": veos.get("memory"),
         "max_fp_num": veos.get("max_fp_num"),
         "ptf_bp_ip": veos.get("ptf_bp_ip"),
-        "ptf_bp_ipv6": veos.get("ptf_bp_ipv6")
+        "ptf_bp_ipv6": veos.get("ptf_bp_ipv6"),
+        "supported_vm_types": veos.get("supported_vm_types"),
+        "sonic_image_filename": veos.get("sonic_image_filename")
     }
     proxy = {
         "proxy_env": {
@@ -133,6 +135,7 @@ def makeMain(data, outfile):
         }
     }
     with open(outfile, "w") as toWrite:
+        toWrite.write( "supported_vm_types: [ 'veos', 'ceos', 'vsonic' ]\n" ),
         yaml.dump(dictData, stream=toWrite, default_flow_style=False)
         toWrite.write("# proxy\n")
         yaml.dump(proxy, stream=toWrite, default_flow_style=False)
@@ -150,7 +153,7 @@ def makeVMHostCreds(data, outfile):
     result = {
         "ansible_user": veos.get("vm_host_ansible").get("ansible_user"),
         "ansible_password": veos.get("vm_host_ansible").get("ansible_password"),
-        "ansible_become_pass": veos.get("vm_host_ansible").get("ansible_become_pass")
+        "ansible_become_password": veos.get("vm_host_ansible").get("ansible_become_password")
     }
     with open(outfile, "w") as toWrite:
         toWrite.write("---\n")
@@ -164,7 +167,7 @@ generates files/sonic_lab_devices.csv by pulling hostname, managementIP, hwsku, 
 error handling: checks if attribute values are None type or string "None"
 """
 def makeSonicLabDevices(data, outfile):
-    csv_columns = "Hostname,ManagementIp,HwSku,Type"
+    csv_columns = "Hostname,ManagementIp,HwSku,Type,CardType"
     topology = data
     csv_file = outfile
 
@@ -175,8 +178,8 @@ def makeSonicLabDevices(data, outfile):
                 hostname = device
                 managementIP = str(deviceDetails.get("ansible").get("ansible_host"))
                 hwsku = deviceDetails.get("hwsku")
-                devType = deviceDetails.get("device_type")
-
+                devType = deviceDetails.get("device_type") #DevSonic, server, FanoutRoot etc
+                cardType = deviceDetails.get("card_type") #supervisor, Linecard etc
                 # catch empty values
                 if not managementIP:
                     managementIP = ""
@@ -184,8 +187,10 @@ def makeSonicLabDevices(data, outfile):
                     hwsku = ""
                 if not devType:
                     devType = ""
+                if not cardType:
+                    cardType = ""
 
-                row = hostname + "," + managementIP + "," + hwsku + "," + devType
+                row = hostname + "," + managementIP + "," + hwsku + "," + devType + "," + cardType
                 f.write(row + "\n")
     except IOError:
         print("I/O error: makeSonicLabDevices")
@@ -199,7 +204,7 @@ generates /testbed.csv by pulling confName, groupName, topo, ptf_image_name, ptf
 error handling: checks if attribute values are None type or string "None"
 """
 def makeTestbed(data, outfile):
-    csv_columns = "# conf-name,group-name,topo,ptf_image_name,ptf,ptf_ip,ptf_ipv6,server,vm_base,dut,comment"
+    csv_columns = "# conf-name,group-name,topo,ptf_image_name,ptf,ptf_ip,ptf_ipv6,server,vm_base,dut,inv_name,auto_recover,comment"
     topology = data
     csv_file = outfile
 
@@ -217,6 +222,8 @@ def makeTestbed(data, outfile):
                 vm_base = groupDetails.get("vm_base")
                 dut = groupDetails.get("dut")
                 ptf = groupDetails.get("ptf")
+                inv_name = groupDetails.get("inv_name")
+                auto_recover = groupDetails.get("auto_recover")
                 comment = groupDetails.get("comment")
 
                 # catch empty types
@@ -238,10 +245,21 @@ def makeTestbed(data, outfile):
                     dut = ""
                 if not ptf:
                     ptf = ""
+                if not inv_name:
+                    inv_name = ""
+                if not auto_recover:
+                    auto_recover = ""
+                else:
+                    auto_recover = str(auto_recover)
                 if not comment:
                     comment = ""
+                # dut is a list for multi-dut testbed, convert it to string
+                if type(dut) is not str:
+                   dut = dut.__str__()
+                dut = dut.replace(",", ";")
+                dut = dut.replace(" ", "")
 
-                row = confName + "," + groupName + "," + topo + "," + ptf_image_name + "," + ptf + "," + ptf_ip + "," + ptf_ipv6 + ","+ server + "," + vm_base + "," + dut + "," + comment
+                row = confName + "," + groupName + "," + topo + "," + ptf_image_name + "," + ptf + "," + ptf_ip + "," + ptf_ipv6 + ","+ server + "," + vm_base + "," + dut + "," + inv_name + "," + auto_recover + "," + comment
                 f.write(row + "\n")
     except IOError:
         print("I/O error: issue creating testbed.csv")
@@ -265,6 +283,8 @@ def makeSonicLabLinks(data, outfile):
             for key, item in topology.items():
                 startDevice = key
                 interfacesDetails = item.get("interfaces")
+                if not interfacesDetails:
+                    continue
 
                 for startPort, element in interfacesDetails.items():
                     startPort = startPort
@@ -326,6 +346,12 @@ def makeFanoutSecrets(data, outfile):
         if "fanout" in value.get("device_type").lower():
             result.update({"ansible_ssh_user": value.get("ansible").get("ansible_ssh_user")})
             result.update({"ansible_ssh_pass": value.get("ansible").get("ansible_ssh_pass")})
+            result.update({"fanout_sonic_user": value.get("ansible").get("fanout_sonic_user")})
+            result.update({"fanout_sonic_password": value.get("ansible").get("fanout_sonic_password")})
+            result.update({"fanout_network_user": value.get("ansible").get("fanout_network_user")})
+            result.update({"fanout_network_password": value.get("ansible").get("fanout_network_password")})
+            result.update({"fanout_shell_user": value.get("ansible").get("fanout_shell_user")})
+            result.update({"fanout_shell_password": value.get("ansible").get("fanout_shell_password")})
 
     with open(outfile, "w") as toWrite:
         yaml.dump(result, stream=toWrite, default_flow_style=False)
@@ -363,6 +389,7 @@ makeLab(data, veos, devices, outfile)
 """
 def makeLab(data, devices, testbed, outfile):
     deviceGroup = data
+    start_switchid = 0
     with open(outfile, "w") as toWrite:
         for key, value in deviceGroup.items():
             #children section
@@ -377,45 +404,51 @@ def makeLab(data, devices, testbed, outfile):
                 toWrite.write("[" + key + "]\n")
                 for host in value.get("host"):
                     entry = host
+                    dev = devices.get(host.lower())
 
                     if "ptf" in key:
                         try: #get ansible host
-                            ansible_host = testbed.get(host).get("ansible").get("ansible_host")
+                            ansible_host = dev.get("ansible").get("ansible_host")
                             entry += "\tansible_host=" + ansible_host.split("/")[0]
                         except:
                             print("\t\t" + host + ": ansible_host not found")
 
                         if ansible_host:
                             try: # get ansible ssh username
-                                ansible_ssh_user = testbed.get(host.lower()).get("ansible").get("ansible_ssh_user")
+                                ansible_ssh_user = dev.get("ansible").get("ansible_ssh_user")
                                 entry += "\tansible_ssh_user=" + ansible_ssh_user
                             except:
                                 print("\t\t" + host + ": ansible_ssh_user not found")
 
                             try: # get ansible ssh pass
-                                ansible_ssh_pass = testbed.get(host.lower()).get("ansible").get("ansible_ssh_pass")
+                                ansible_ssh_pass = dev.get("ansible").get("ansible_ssh_pass")
                                 entry += "\tansible_ssh_pass=" + ansible_ssh_pass
                             except:
                                 print("\t\t" + host + ": ansible_ssh_pass not found")
                     else: #not ptf container
                         try: #get ansible host
-                            ansible_host = devices.get(host.lower()).get("ansible").get("ansible_host")
+                            ansible_host = dev.get("ansible").get("ansible_host")
                             entry += "\tansible_host=" + ansible_host.split("/")[0]
                         except:
                             print("\t\t" + host + ": ansible_host not found")
 
                         if ansible_host:
                             try: # get ansible ssh username
-                                ansible_ssh_user = devices.get(host.lower()).get("ansible").get("ansible_ssh_user")
+                                ansible_ssh_user = dev.get("ansible").get("ansible_ssh_user")
                                 entry += "\tansible_ssh_user=" + ansible_ssh_user
                             except:
                                 print("\t\t" + host + ": ansible_ssh_user not found")
 
                             try: # get ansible ssh pass
-                                ansible_ssh_pass = devices.get(host.lower()).get("ansible").get("ansible_ssh_pass")
+                                ansible_ssh_pass = dev.get("ansible").get("ansible_ssh_pass")
                                 entry += "\tansible_ssh_pass=" + ansible_ssh_pass
                             except:
                                 print("\t\t" + host + ": ansible_ssh_pass not found")
+                            try: # get OS type
+                                operationsystem = devices.get(host.lower()).get("os")
+                                entry += "\tos=" + operationsystem
+                            except:
+                                print("\t\t" + host + ": device operation type not found")
 
                     toWrite.write(entry + "\n")
                 toWrite.write("\n")
@@ -455,8 +488,13 @@ def makeVeos(data, veos, devices, outfile):
                     entry = host
 
                     try:
-                        ansible_host = devices.get(host.lower()).get("ansible").get("ansible_host")
+                        dev = devices.get(host.lower())
+                        ansible_host = dev.get("ansible").get("ansible_host")
                         entry += "\tansible_host=" + ansible_host.split("/")[0]
+                        if dev.get("device_type") == "DevSonic":
+                            entry += "\ttype=" + dev.get("type")
+                            entry += "\thwsku=" + dev.get("hwsku")
+                            entry += "\tcard_type=" + dev.get("card_type")
                     except:
                         try:
                             ansible_host = veos.get(key).get(host).get("ansible_host")
@@ -503,6 +541,10 @@ def updateDockerRegistry(docker_registry, outfile):
             toWrite.write("docker_registry_host: " + docker_registry.get("docker_registry_host"))
             toWrite.write("\n\n")
 
+
+def makeLabconnection_file():
+    import subprocess
+    print(subprocess.call("cd files/ && python creategraph.py -o lab_connection_graph.xml -c None -p None ", shell=True))
 
 def main():
     print("PROCESS STARTED")
@@ -572,6 +614,8 @@ def main():
     print("UPDATING FILES FROM CONFIG FILE")
     print("\tUPDATING DOCKER REGISTRY")
     updateDockerRegistry(docker_registry, args.basedir + dockerRegistry_file)
+    print("\t CREATING file lab_connection_graph.xml")
+    makeLabconnection_file()
     print("PROCESS COMPLETED")
 
 
