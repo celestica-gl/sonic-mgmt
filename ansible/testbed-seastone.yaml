@@ -82,7 +82,8 @@ devices:
     seastone-fanout:                           
         device_type: FanoutLeaf                     # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
         hwsku: Celestica-DX010-C32                  # source: sonic-mgmt/ansible/files/sonic_lab_devices-github.csv
-        alias:             
+        alias:
+        os: sonic
         credentials:                        
             username: 
             password: 
