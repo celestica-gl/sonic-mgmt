@@ -55,7 +55,7 @@ class BcastTest(BaseTest):
         self.router_mac = self.test_params['router_mac']
         self.setUpVlan(self.test_params['vlan_info'])
         if self.test_params['testbed_type'] == 't0':
-            self.src_ports = range(1, 25) + range(28, 31)
+            self.src_ports = range(1, 25) + range(27, 31)
         if self.test_params['testbed_type'] == 't0-52':
             self.src_ports = range(0, 52)
         if self.test_params['testbed_type'] == 't0-64':
