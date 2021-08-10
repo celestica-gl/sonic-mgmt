@@ -126,7 +126,7 @@ def restart_dhcp_service(duthost):
 
     for retry in range(5):
         time.sleep(30)
-        dhcp_status = duthost.shell('docker container top dhcp_relay | grep dhcrelay | cat')["stdout"]
+        dhcp_status = duthost.shell('docker container top dhcp_relay | grep dhcp_relay | cat')["stdout"]
         if dhcp_status != "":
             break
     else:
