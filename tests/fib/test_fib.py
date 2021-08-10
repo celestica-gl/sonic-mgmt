@@ -445,6 +445,11 @@ def hash_keys(duthost):
             hash_keys.remove('ip-proto')
         if 'ingress-port' in hash_keys:
             hash_keys.remove('ingress-port')
+    # removing ip-proto from hash_keys for bcm56996, spec no support info
+    if "brixia" in duthost.facts['platform']:
+        if 'ip-proto' in hash_keys:
+            hash_keys.remove('ip-proto')
+
     # remove the ingress port from multi asic platform
     # In multi asic platform each asic has different hash seed,
     # the same packet coming in different asic
