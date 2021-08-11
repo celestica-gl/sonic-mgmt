@@ -147,6 +147,7 @@ def setup_fdb(ptfadapter, vlan_table, router_mac, pkt_type):
                     send_arp_reply(ptfadapter, member, dummy_mac, router_mac)
                 else:
                     pytest.fail("Unknown option '{}'".format(pkt_type))
+                time.sleep(0.1)
 
             # put in set learned dummy MACs
             fdb[member].update(dummy_macs)
