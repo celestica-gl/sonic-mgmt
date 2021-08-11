@@ -52,6 +52,7 @@ devices:
         device_type: FanoutLeaf
         hwsku: Brixia
         alias:
+        os: sonic
         credentials:
             username: 
             password: 
