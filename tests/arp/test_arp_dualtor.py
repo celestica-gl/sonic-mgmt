@@ -116,10 +116,7 @@ def test_arp_garp_enabled(duthosts, enum_rand_one_per_hwsku_frontend_hostname, g
     arp_src_mac = '00:00:07:08:09:0a'
     _, _, intf1_index, _, = intfs_for_test
 
-<<<<<<< HEAD
     #add a delay to wait the config effective
-=======
->>>>>>> 4b74a958c5c9d7bd8f8066d205d598d84fc4b07f
     time.sleep(5)
     pkt = testutils.simple_arp_packet(pktlen=60,
                                 eth_dst='ff:ff:ff:ff:ff:ff',
