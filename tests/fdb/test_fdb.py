@@ -147,6 +147,10 @@ def setup_fdb(ptfadapter, vlan_table, router_mac, pkt_type):
                     send_arp_reply(ptfadapter, member, dummy_mac, router_mac)
                 else:
                     pytest.fail("Unknown option '{}'".format(pkt_type))
+<<<<<<< HEAD
+                #add a delay to avoid ovs drop packets
+=======
+>>>>>>> 4b74a958c5c9d7bd8f8066d205d598d84fc4b07f
                 time.sleep(0.1)
 
             # put in set learned dummy MACs
