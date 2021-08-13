@@ -28,8 +28,12 @@ vlan {{ device_vlan_range[inventory_hostname] | list | join(',') }}
 vrf definition management
    rd 1:1
 !
-{% for i in range(1,33) %}
-{% set intf =  'Ethernet' + i|string + '/1'  %}
+{% for i in range(1,34) %}
+{% if i == 33 %}
+{%     set intf =  'Et' + i|string  %}
+{% else %}
+{%     set intf =  'Et' + i|string + '/1'  %}
+{% endif %}
 interface {{ intf }}
 {% if intf in device_port_vlans[inventory_hostname] and device_port_vlans[inventory_hostname][intf]['mode'] != "Trunk" %}
 {%     if device_conn[inventory_hostname][intf]['speed'] == "100000" %}
@@ -40,6 +44,15 @@ interface {{ intf }}
    speed forced 100gfull
    error-correction encoding reed-solomon
    no shutdown
+{%     elif device_conn[inventory_hostname][intf]['speed'] == "400000" %}
+   description {{ device_conn[inventory_hostname][intf]['peerdevice'] }}-{{ device_conn[inventory_hostname][intf]['peerport'] }}
+   switchport access vlan {{ device_port_vlans[inventory_hostname][intf]['vlanids'] }}
+   switchport mode dot1q-tunnel
+   spanning-tree portfast
+   speed forced 400gfull
+   error-correction encoding reed-solomon
+   no shutdown
+
 {%     elif device_conn[inventory_hostname][intf]['speed'] == "40000" %}
    description {{ device_conn[inventory_hostname][intf]['peerdevice'] }}-{{ device_conn[inventory_hostname][intf]['peerport'] }}
    switchport access vlan {{ device_port_vlans[inventory_hostname][intf]['vlanids'] }}
@@ -77,7 +90,7 @@ interface {{ intf }}
    switchport mode trunk
    switchport trunk allowed vlan {{ device_port_vlans[inventory_hostname][intf]['vlanids'] }}
    spanning-tree portfast
-   speed force 40gfull
+   speed force 10gfull
    no shutdown
 {% else %}
    shutdown
