@@ -81,7 +81,7 @@ devices:
 
     arista-fanout:
         device_type: FanoutLeaf
-        hwsku: DCS-7060PX4-32
+        hwsku: Arista-7060CX-32S
         alias: 
         os: eos
         credentials:
@@ -90,7 +90,7 @@ devices:
             enable_password: 
         ansible:
             ansible_host: 10.251.0.235/23
-            ansible_ssh_user: admin
+            ansible_ssh_user: root
             ansible_ssh_pass: password
             fanout_sonic_user: admin
             fanout_sonic_password: password
@@ -796,196 +796,196 @@ topology:
         interfaces:
             Ethernet0:
                 EndDevice: arista-fanout
-                EndPort: Ethernet0
+                EndPort: Et1/1
                 Bandwidth: 400000
                 VlanID: 100
                 VlanMode: Access
             Ethernet4: 
                 EndDevice: arista-fanout
-                EndPort: Ethernet4
+                EndPort: Et2/1
                 Bandwidth: 400000
                 VlanID: 101
                 VlanMode: Access
             Ethernet8:
                 EndDevice: arista-fanout
-                EndPort: Ethernet8
+                EndPort: Et3/1
                 Bandwidth: 400000
                 VlanID: 102
                 VlanMode: Access
             Ethernet12:
                 EndDevice: arista-fanout
-                EndPort: Ethernet12
+                EndPort: Et4/1
                 Bandwidth: 400000
                 VlanID: 103
                 VlanMode: Access
             Ethernet16:
                 EndDevice: arista-fanout
-                EndPort: Ethernet16
+                EndPort: Et5/1
                 Bandwidth: 400000
                 VlanID: 104
                 VlanMode: Access
             Ethernet20:
                 EndDevice: arista-fanout
-                EndPort: Ethernet20
+                EndPort: Et6/1
                 Bandwidth: 400000 
                 VlanID: 105
                 VlanMode: Access
             Ethernet24:
                 EndDevice: arista-fanout
-                EndPort: Ethernet24
+                EndPort: Et7/1
                 Bandwidth: 400000 
                 VlanID: 106
                 VlanMode: Access
             Ethernet28:
                 EndDevice: arista-fanout
-                EndPort: Ethernet28
+                EndPort: Et8/1
                 Bandwidth: 400000 
                 VlanID: 107
                 VlanMode: Access
             Ethernet32:
                 EndDevice: arista-fanout
-                EndPort: Ethernet32
+                EndPort: Et9/1
                 Bandwidth: 400000 
                 VlanID: 108
                 VlanMode: Access
             Ethernet36:
                 EndDevice: arista-fanout
-                EndPort: Ethernet36
+                EndPort: Et10/1
                 Bandwidth: 400000 
                 VlanID: 109
                 VlanMode: Access
             Ethernet40:
                 EndDevice: arista-fanout
-                EndPort: Ethernet40
+                EndPort: Et11/1
                 Bandwidth: 400000 
                 VlanID: 110
                 VlanMode: Access
             Ethernet44:
                 EndDevice: arista-fanout
-                EndPort: Ethernet44
+                EndPort: Et12/1
                 Bandwidth: 400000 
                 VlanID: 111
                 VlanMode: Access
             Ethernet48:
                 EndDevice: arista-fanout
-                EndPort: Ethernet48
+                EndPort: Et13/1
                 Bandwidth: 400000 
                 VlanID: 112
                 VlanMode: Access
             Ethernet52:
                 EndDevice: arista-fanout
-                EndPort: Ethernet52
+                EndPort: Et14/1
                 Bandwidth: 400000 
                 VlanID: 113
                 VlanMode: Access
             Ethernet56:
                 EndDevice: arista-fanout
-                EndPort: Ethernet56
+                EndPort: Et15/1
                 Bandwidth: 400000 
                 VlanID: 114
                 VlanMode: Access
             Ethernet60:
                 EndDevice: arista-fanout
-                EndPort: Ethernet60
+                EndPort: Et16/1
                 Bandwidth: 400000 
                 VlanID: 115
                 VlanMode: Access
             Ethernet64:
                 EndDevice: arista-fanout
-                EndPort: Ethernet64
+                EndPort: Et17/1
                 Bandwidth: 400000 
                 VlanID: 116
                 VlanMode: Access
             Ethernet68:
                 EndDevice: arista-fanout
-                EndPort: Ethernet68
+                EndPort: Et18/1
                 Bandwidth: 400000 
                 VlanID: 117
                 VlanMode: Access
             Ethernet72:
                 EndDevice: arista-fanout
-                EndPort: Ethernet72
+                EndPort: Et19/1
                 Bandwidth: 400000 
                 VlanID: 118
                 VlanMode: Access
             Ethernet76:
                 EndDevice: arista-fanout
-                EndPort: Ethernet76
+                EndPort: Et20/1
                 Bandwidth: 400000 
                 VlanID: 119
                 VlanMode: Access
             Ethernet80:
                 EndDevice: arista-fanout
-                EndPort: Ethernet80
+                EndPort: Et21/1
                 Bandwidth: 400000 
                 VlanID: 120
                 VlanMode: Access
             Ethernet84:
                 EndDevice: arista-fanout
-                EndPort: Ethernet84
+                EndPort: Et22/1
                 Bandwidth: 400000 
                 VlanID: 121
                 VlanMode: Access
             Ethernet88:
                 EndDevice: arista-fanout
-                EndPort: Ethernet88
+                EndPort: Et23/1
                 Bandwidth: 400000 
                 VlanID: 122
                 VlanMode: Access
             Ethernet92:
                 EndDevice: arista-fanout
-                EndPort: Ethernet92
+                EndPort: Et24/1
                 Bandwidth: 400000 
                 VlanID: 123
                 VlanMode: Access
             Ethernet96:
                 EndDevice: arista-fanout
-                EndPort: Ethernet96
+                EndPort: Et25/1
                 Bandwidth: 400000 
                 VlanID: 124
                 VlanMode: Access
             Ethernet100:
                 EndDevice: arista-fanout
-                EndPort: Ethernet100
+                EndPort: Et26/1
                 Bandwidth: 400000 
                 VlanID: 125
                 VlanMode: Access
             Ethernet104:
                 EndDevice: arista-fanout
-                EndPort: Ethernet104
+                EndPort: Et27/1
                 Bandwidth: 400000 
                 VlanID: 126
                 VlanMode: Access
             Ethernet108:
                 EndDevice: arista-fanout
-                EndPort: Ethernet108
+                EndPort: Et28/1
                 Bandwidth: 400000 
                 VlanID: 127
                 VlanMode: Access
             Ethernet112:
                 EndDevice: arista-fanout
-                EndPort: Ethernet112
+                EndPort: Et29/1
                 Bandwidth: 400000 
                 VlanID: 128
                 VlanMode: Access
             Ethernet116:
                 EndDevice: arista-fanout
-                EndPort: Ethernet116
+                EndPort: Et30/1
                 Bandwidth: 400000 
                 VlanID: 129
                 VlanMode: Access
             Ethernet120:
                 EndDevice: arista-fanout
-                EndPort: Ethernet120
+                EndPort: Et31/1
                 Bandwidth: 400000 
                 VlanID: 130
                 VlanMode: Access
-#            Ethernet124:
-#               EndDevice: arista-fanout
-#               EndPort: Ethernet124
-#               Bandwidth: 400000 
-#               VlanID: 1712
-#               VlanMode: Access
+            Ethernet124:
+               EndDevice: arista-fanout
+               EndPort: Et32/1
+               Bandwidth: 400000 
+               VlanID: 131
+               VlanMode: Access
     arista-fanout:
         interfaces:
             Et33:
