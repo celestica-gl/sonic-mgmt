@@ -111,11 +111,17 @@ class ReadMACMetadata():
             pytest.fail("MAC entry does not exist")
 
         logger.info("Verify interfaces are UP and MTU == 9100")
-        checks.check_interfaces(duthost)
 
+        check_interfaces  = self.request.getfixturevalue('check_interfaces')
+        check_interfaces(duthost)
+        
         cfg_facts = duthost.config_facts(host=duthost.hostname, source="persistent")['ansible_facts']
-        non_default_ports = [k for k,v in cfg_facts["PORT"].items() if "mtu" in v and v["mtu"] != "9100" and "admin_status" in v and v["admin_status"] == "up" ]
-        non_default_portchannel = [k for k,v in cfg_facts["PORTCHANNEL"].items() if "mtu" in v and v["mtu"] != "9100" and "admin_status" in v and v["admin_status"] == "up" ]
+        non_default_ports = []
+        non_default_portchannel = []
+        if "port" in cfg_facts:
+            non_default_ports = [k for k,v in cfg_facts["PORT"].items() if "mtu" in v and v["mtu"] != "9100" and "admin_status" in v and v["admin_status"] == "up" ]
+        if "PORTCHANNEL" in cfg_facts:
+            non_default_portchannel = [k for k,v in cfg_facts["PORTCHANNEL"].items() if "mtu" in v and v["mtu"] != "9100" and "admin_status" in v and v["admin_status"] == "up" ]
 
         if len(non_default_ports) != 0 or len(non_default_portchannel) != 0:
             pytest.fail("There are ports/portchannel with non default MTU:\nPorts: {}\nPortchannel: {}".format(non_default_ports,non_default_portchannel))
