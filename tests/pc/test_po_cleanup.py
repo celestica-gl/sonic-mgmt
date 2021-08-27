@@ -3,10 +3,11 @@ import logging
 from tests.common.utilities import wait_until
 from tests.common import config_reload
 
-
 pytestmark = [
+    pytest.mark.disable_loganalyzer,
     pytest.mark.topology('any'),
 ]
+
 
 @pytest.fixture(autouse=True)
 def ignore_expected_loganalyzer_exceptions(enum_rand_one_per_hwsku_frontend_hostname, loganalyzer):
