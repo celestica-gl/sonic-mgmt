@@ -3209,6 +3209,26 @@ sensors_checks:
       temp: []
     psu_skips: {}
 
+  x86_64-cel_brixia-r0:
+    alarms:
+      fan: []
+      power: []
+      temp:
+      - coretemp-isa-0000/Core 0/temp2_crit_alarm
+      - coretemp-isa-0000/Core 1/temp3_crit_alarm
+      - coretemp-isa-0000/Core 2/temp4_crit_alarm
+      - coretemp-isa-0000/Core 3/temp5_crit_alarm
+      - coretemp-isa-0000/Core 4/temp6_crit_alarm
+      - coretemp-isa-0000/Core 5/temp7_crit_alarm
+      - coretemp-isa-0000/Core 6/temp8_crit_alarm
+      - coretemp-isa-0000/Core 7/temp9_crit_alarm
+    compares: {}
+    non_zero:
+      fan: []
+      power: []
+      temp: []
+    psu_skips: {}
+
   x86_64-arista_7050_qx32s:
     alarms:
       fan:
