@@ -449,6 +449,19 @@ def makeLab(data, devices, testbed, outfile):
                                 entry += "\tos=" + operationsystem
                             except:
                                 print("\t\t" + host + ": device operation type not found")
+                            try: # get pdu_host
+                                pdu_host = devices.get(host.lower()).get("pdu_host")
+                                entry += "\tpdu_host=" + pdu_host
+                            except:
+                                print("\t\t" + host + ": pdu_host not found")
+                    if "pdu" in key:
+                        try: # get pdu protocol type default snmp
+                            protocoltype = devices.get(host.lower()).get("protocol")
+                            entry += "\tprotocol=" + protocoltype
+                        except:
+                            entry += "\tprotocol=snmp"
+                            print("\t\t" + host + ": pdu protocol type not found, set default snmp")
+
 
                     toWrite.write(entry + "\n")
                 toWrite.write("\n")

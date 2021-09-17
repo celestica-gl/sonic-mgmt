@@ -30,14 +30,23 @@ device_groups:
         host: [brixia-fanout, seastone-fanout]
     ptf:
         host: [ptfbt0,ptfbt1,ptfst0,ptfst1,ptfsst0]
+    pdu:
+        host: [pdu-1]
 
 # devices is a dictionary that contains all devices and hosts but not ptfs (ptfs found under testbed)
 # devices is used to export sonic_lab_devices, fanout/secrets, lab/secrets, lab
 # there are no cross references
 devices:
+    pdu-1:
+        device_type: blank
+        hwsku: apc
+        protocol: snmp
+        ansible:
+            ansible_host: TODO-avoidattach
     cel-brixia-01:
         device_type: DevSonic
         hwsku: Brixia
+        pdu_host: pdu-1
         alias: 
         credentials:
             username: 
