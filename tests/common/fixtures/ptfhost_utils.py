@@ -45,7 +45,7 @@ def copy_acstests_directory(ptfhost):
     ptfhost.file(path=os.path.join(ROOT_DIR, ACS_TESTS), state="absent")
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def copy_ptftests_directory(ptfhost):
     """
         Copys PTF tests directory to PTF host.
@@ -100,7 +100,7 @@ def change_mac_addresses(ptfhost):
     ptfhost.change_mac_addresses()
 
 
-@pytest.fixture(scope="session", autouse=True)
+@pytest.fixture(scope="module", autouse=True)
 def remove_ip_addresses(ptfhost):
     """
         Remove existing IP addresses on PTF host.
