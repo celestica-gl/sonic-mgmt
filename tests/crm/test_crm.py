@@ -23,7 +23,7 @@ pytestmark = [
 logger = logging.getLogger(__name__)
 
 CRM_POLLING_INTERVAL = 1
-CRM_UPDATE_TIME = 4
+CRM_UPDATE_TIME = 10
 SONIC_RES_UPDATE_TIME = 50
 
 THR_VERIFY_CMDS = OrderedDict([
@@ -406,6 +406,10 @@ def get_entries_num(used, available):
     """ Get number of entries needed to be created that 'used' counter reached one percent """
     return ((used + available) / 100) + 1
 
+def get_route_entries_num(used, available):
+    """ Get number of entries needed to be created that 'used' counter reached one percent """
+    return (((used + available) / 100) + 1)- used
+
 @pytest.mark.usefixtures('disable_route_checker')
 @pytest.mark.parametrize("ip_ver,route_add_cmd,route_del_cmd", [("4", "{} route add 2.2.2.0/24 via {}",
                                                                 "{} route del 2.2.2.0/24 via {}"),
@@ -495,7 +499,7 @@ def test_crm_route(duthosts, enum_rand_one_per_hwsku_frontend_hostname, enum_fro
 
     used_percent = get_used_percent(new_crm_stats_route_used, new_crm_stats_route_available)
     if used_percent < 1:
-        routes_num = get_entries_num(new_crm_stats_route_used, new_crm_stats_route_available)
+        routes_num = get_route_entries_num(new_crm_stats_route_used, new_crm_stats_route_available)
         if ip_ver == "4":
             routes_list = " ".join([str(ipaddress.IPv4Address(u'2.0.0.1') + item) + "/32"
                 for item in range(1, routes_num + 1)])
