@@ -104,6 +104,9 @@ def run_static_route_test(duthost, ptfadapter, ptfhost, tbinfo, prefix, nexthop_
         if config_reload_test:
             duthost.shell('config save -y')
             config_reload(duthost)
+            for idx in range(len(nexthop_addrs)):
+                duthost.shell("ping {} -c 10".format(nexthop_addrs[idx]))
+            time.sleep(5)
             generate_and_verify_traffic(duthost, ptfadapter, tbinfo, ip_dst, nexthop_devs, ipv6=ipv6)
 
     finally:
