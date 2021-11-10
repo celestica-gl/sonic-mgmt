@@ -2,6 +2,7 @@ import pytest
 
 from tests.common.fixtures.ptfhost_utils import copy_ptftests_directory   # lgtm[py/unused-import]
 from tests.common.fixtures.ptfhost_utils import change_mac_addresses      # lgtm[py/unused-import]
+from tests.platform_tests.verify_dut_health import verify_dut_health
 from tests.common.fixtures.duthost_utils import backup_and_restore_config_db
 
 pytestmark = [
@@ -9,8 +10,8 @@ pytestmark = [
     pytest.mark.topology('t0')
 ]
 
-@pytest.mark.usefixtures('get_advanced_reboot')
-def test_fast_reboot(request, get_advanced_reboot, advanceboot_loganalyzer):
+
+def test_fast_reboot(request, get_advanced_reboot, verify_dut_health,advanceboot_loganalyzer):
     '''
     Fast reboot test case is run using advacned reboot test fixture
 
