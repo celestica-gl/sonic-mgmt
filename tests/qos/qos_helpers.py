@@ -33,7 +33,7 @@ def eos_to_linux_intf(eos_intf_name):
     @param eos_intf_name: Interface name in EOS
     @return: Return the interface name in Linux
     """
-    return eos_intf_name.replace('Ethernet', 'et').replace('/', '_')
+    return eos_intf_name.replace('Et', 'et').replace('/', '_')
 
 def get_phy_intfs(host_ans):
     """
