@@ -73,7 +73,7 @@ devices:
             fanout_sonic_password: password
             fanout_network_user: admin
             fanout_network_password: password
-            fanout_shell_user: admin
+            fanout_shell_user: root
             fanout_shell_password: password
 
     cel-seastone2-01:
