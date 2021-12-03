@@ -710,9 +710,18 @@ class TestConfigInterface():
         cli_ns_option = sample_intf['cli_ns_option']
         asic_index = sample_intf['asic_index']
         duthost = duthosts[enum_rand_one_per_hwsku_frontend_hostname]
-
-        out = dutHostGuest.shell('SONIC_CLI_IFACE_MODE={} sudo config interface {} speed {} 10000'.format(
-             ifmode,cli_ns_option, test_intf))
+        duthwsku = duthost.facts['hwsku']
+        if duthwsku == "Brixia":
+            logger.debug('for TH4G, current SAI and SDK not support 10G speed\n')
+            tested_speed = 400000
+        else:
+            logger.info('if your this case failed,please check if your DUT support 10G speed or not\n')
+            tested_speed = 10000
+        """
+        incorrect speed set will cause SAI ERR and restart SWSS related service,then the following test items will fail
+        """
+        out = dutHostGuest.shell('SONIC_CLI_IFACE_MODE={} sudo config interface {} speed {} {}'.format(
+             ifmode,cli_ns_option, test_intf, tested_speed))
 
         if out['rc'] != 0:
             pytest.fail()
@@ -724,7 +733,7 @@ class TestConfigInterface():
         speed = dutHostGuest.shell('SONIC_CLI_IFACE_MODE={} {}'.format(ifmode, db_cmd))['stdout']
         logger.info('speed: {}'.format(speed))
 
-        assert speed == '10000'
+        assert speed == '{}'.format(tested_speed)
 
         out = dutHostGuest.shell('SONIC_CLI_IFACE_MODE={} sudo config interface {}  speed {} {}'.format(
             ifmode, cli_ns_option, test_intf, native_speed))
