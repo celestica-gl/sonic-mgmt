@@ -1,0 +1,16 @@
+{
+    "ACL_TABLE": {
+        "VRF_ACL_REDIRECT_V6": {
+            "policy_desc": "IPv6 Redirect traffic to nexthop in different vrfs",
+            "type": "L3V6",
+            "ports": ["{{ src_port }}"]
+        }
+    },
+    "ACL_RULE": {
+        "VRF_ACL_REDIRECT_V6|rule1": {
+            "priority": "55",
+            "SRC_IPV6": "2000:30::1",
+            "packet_action": "redirect:{% for intf, ip in redirect_dst_ipv6s %}{{ ip ~ "@" ~ intf }}{{ "," if not loop.last else "" }}{% endfor %}"
+        }
+    }
+}
