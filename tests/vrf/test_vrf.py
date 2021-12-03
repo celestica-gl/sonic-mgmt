@@ -882,6 +882,7 @@ class TestVrfLoopbackIntf():
                 ptfhost.shell("ip netns exec {} ip route add {} nexthop via {} ".format(g_vars['vlan_peer_vrf2ns_map']['Vrf2'], ip, nexthop))
 
         duthost.shell("sysctl -w net.ipv6.ip_nonlocal_bind=1")
+        time.sleep(2)
 
         # -------- Testing ----------
         yield
@@ -931,6 +932,10 @@ class TestVrfLoopbackIntf():
         # not create bgp socket for sessions.
         #duthost.shell("vtysh -c 'config terminal' -c 'router bgp 65444'")
 
+        duthost.copy(src="vrf/vrf_loopback_neigh.json", dest="/tmp")
+        duthost.shell("config load -y /tmp/vrf_loopback_neigh.json")
+        time.sleep(10)
+
         # vrf1 args, vrf2 use the same as vrf1
         peer_range     = IPNetwork(cfg_facts['BGP_PEER_RANGE']['BGPSLBPassive']['ip_range'][0])
         ptf_speaker_ip = IPNetwork("{}/{}".format(peer_range[1], peer_range.prefixlen))
@@ -973,7 +978,7 @@ class TestVrfLoopbackIntf():
         ptfhost.template(src="vrf/bgp_speaker/start.j2", dest="%s/%s" % (exabgp_dir, 'start.sh'), mode="u+rwx")
 
         # kill exabgp if any
-        ptfhost.shell("ps -ef | grep config.ini | grep -v grep | cut -d ' ' -f 9 | xargs kill || true")
+        ptfhost.shell("ps -ef | grep config.ini | grep -v grep | awk '{print $2}' | xargs kill || true")
 
         # start exabgp instance
         ptfhost.shell("bash %s/start.sh" % exabgp_dir)
@@ -983,10 +988,6 @@ class TestVrfLoopbackIntf():
 
         # make sure routes announced to bgp neighbors
         time.sleep(10)
-
-        duthost.copy(src="vrf/vrf_loopback_neigh.json", dest="/tmp")
-        duthost.shell("config load -y /tmp/vrf_loopback_neigh.json")
-        time.sleep(15)
 
         # -------- Testing ----------
 
@@ -1001,7 +1002,7 @@ class TestVrfLoopbackIntf():
         # kill exabgp
         #if we kill exabgp,then supervisorctl will restart exabgp immediately, but it can not
         # get the config file from sonic-mgmt, so dut can not get routes
-        ptfhost.shell("ps -ef | grep config.ini | grep -v grep | cut -d ' ' -f 9 | xargs kill || true")
+        ptfhost.shell("ps -ef | grep config.ini | grep -v grep | awk '{print $2}' | xargs kill || true")
 
         # del speaker ips from ptf ports
         for vrf, vlan_peer_port in g_vars['vlan_peer_ips']:
