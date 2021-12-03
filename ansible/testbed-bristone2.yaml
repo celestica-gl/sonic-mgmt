@@ -42,7 +42,7 @@ devices:
         hwsku: apc
         protocol: snmp
         ansible:
-            ansible_host: TODO-avoidattach
+            ansible_host: Needmanualset
     cel-brixia-01:
         device_type: DevSonic
         hwsku: Brixia
