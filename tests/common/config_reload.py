@@ -37,6 +37,6 @@ def config_reload(duthost, config_source='config_db', wait=120, start_bgp=True, 
         duthost.shell('config save -y')
 
     if config_source == 'config_db':
-        duthost.shell('config reload -y &>/dev/null', executable="/bin/bash")
+        duthost.shell('config reload -y -f &>/dev/null', executable="/bin/bash")
 
     time.sleep(wait)
