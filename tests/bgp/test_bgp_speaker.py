@@ -151,7 +151,10 @@ def common_setup_teardown(duthosts, rand_one_dut_hostname, ptfhost, localhost, t
 
     # check exabgp http_api port is ready
     http_ready = True
+    tcpinfo = ptfhost.shell('netstat -tunlp')
     for i in range(0, 3):
+        if str(port_num[i]) not in tcpinfo['stdout']:
+            time.sleep(30)
         http_ready = wait_tcp_connection(localhost, ptfip, port_num[i])
         if not http_ready:
             break
