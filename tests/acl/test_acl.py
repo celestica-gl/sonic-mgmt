@@ -280,6 +280,7 @@ def create_or_remove_acl_table(duthost, acl_table_config, setup, op):
         else:
             logger.info("Removing ACL table \"{}\" in namesspace {}".format(acl_table_config["table_name"], namespace))
             sonic_host_or_asic_inst.command("config acl remove table {}".format(acl_table_config["table_name"]))
+    time.sleep(15)
 
 @pytest.fixture(scope="module")
 def acl_table(duthosts, rand_one_dut_hostname, setup, stage, ip_version, backup_and_restore_config_db_module):

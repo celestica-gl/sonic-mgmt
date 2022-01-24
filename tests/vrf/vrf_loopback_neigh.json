@@ -1,0 +1,24 @@
+{
+    "BGP_NEIGHBOR": {
+        "Vrf1|10.255.0.1": {
+            "admin_status": "up",
+            "asn": "65432",
+            "holdtime": "10",
+            "keepalive": "3",
+            "local_addr": "10.1.0.32",
+            "name": "netns1000",
+            "nhopself": "0",
+            "rrclient": "0"
+        },
+        "Vrf2|10.255.0.1": {
+            "admin_status": "up",
+            "asn": "65432",
+            "holdtime": "10",
+            "keepalive": "3",
+            "local_addr": "10.1.0.32",
+            "name": "netns2000",
+            "nhopself": "0",
+            "rrclient": "0"
+        }
+    }
+}

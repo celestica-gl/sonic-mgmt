@@ -676,11 +676,11 @@ class TestVrfIsolation():
         )
 
 
-class TestVrfAclRedirect():
+class TestVrfAclRedirectV4():
     c_vars = {}
 
     @pytest.fixture(scope="class", autouse=True)
-    def setup_acl_redirect(self, duthosts, rand_one_dut_hostname, cfg_facts):
+    def setup_acl_redirect_v4(self, duthosts, rand_one_dut_hostname, cfg_facts):
         duthost = duthosts[rand_one_dut_hostname]
         # -------- Setup ----------
 
@@ -726,17 +726,15 @@ class TestVrfAclRedirect():
             'redirect_dst_ipv6s': redirect_dst_ipv6s
         }
         duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
-        duthost.template(src="vrf/vrf_acl_redirect.j2", dest="/tmp/vrf_acl_redirect.json")
-        duthost.shell("config load -y /tmp/vrf_acl_redirect.json")
+        duthost.template(src="vrf/vrf_acl_redirect_v4.j2", dest="/tmp/vrf_acl_redirect_v4.json")
+        duthost.shell("config load -y /tmp/vrf_acl_redirect_v4.json")
 
         # -------- Testing ----------
         yield
 
         # -------- Teardown ----------
         duthost.shell("redis-cli -n 4 del 'ACL_RULE|VRF_ACL_REDIRECT_V4|rule1'")
-        duthost.shell("redis-cli -n 4 del 'ACL_RULE|VRF_ACL_REDIRECT_V6|rule1'")
         duthost.shell("redis-cli -n 4 del 'ACL_TABLE|VRF_ACL_REDIRECT_V4'")
-        duthost.shell("redis-cli -n 4 del 'ACL_TABLE|VRF_ACL_REDIRECT_V6'")
 
     def test_origin_ports_recv_no_pkts_v4(self, partial_ptf_runner, ptfhost):
         # verify origin dst ports should not receive packets any more
@@ -748,18 +746,6 @@ class TestVrfAclRedirect():
             pkt_action='drop',
             src_ports=self.c_vars['src_ports'],
             fib_info_files=['/tmp/pc01_neigh_ipv4.txt']
-        )
-
-    def test_origin_ports_recv_no_pkts_v6(self, partial_ptf_runner, ptfhost):
-        # verify origin dst ports should not receive packets any more
-        gen_specific_neigh_file(self.c_vars['pc1_v6_neigh_ips'], self.c_vars['dst_ports'],
-                                '/tmp/pc01_neigh_ipv6.txt', ptfhost)
-
-        partial_ptf_runner(
-            testname="vrf_test.FwdTest",
-            pkt_action='drop',
-            src_ports=self.c_vars['src_ports'],
-            fib_info_files=['/tmp/pc01_neigh_ipv6.txt']
         )
 
     def test_redirect_to_new_ports_v4(self, partial_ptf_runner, ptfhost):
@@ -776,6 +762,78 @@ class TestVrfAclRedirect():
             fib_info_files=['/tmp/redirect_pc01_neigh_ipv4.txt']
         )
 
+class TestVrfAclRedirectV6():
+    c_vars = {}
+
+    @pytest.fixture(scope="class", autouse=True)
+    def setup_acl_redirect_v6(self, duthosts, rand_one_dut_hostname, cfg_facts):
+        duthost = duthosts[rand_one_dut_hostname]
+        # -------- Setup ----------
+
+        # make sure neighs from Vlan2000 are resolved
+        vlan_peer_port = g_vars['vrf_intf_member_port_indices']['Vrf2']['Vlan2000'][0]
+        vlan_neigh_ip = g_vars['vlan_peer_ips'][('Vrf2', vlan_peer_port)]['ipv4'][0]
+        duthost.shell("ping {} -I {} -c 3 -f".format(vlan_neigh_ip.ip, 'Vrf2'))
+
+        vrf_intf_ports = g_vars['vrf_intf_member_port_indices']
+        src_ports = [vrf_intf_ports['Vrf1']['Vlan1000'][0]]
+        dst_ports = [vrf_intf_ports['Vrf1']['PortChannel0001']]
+
+        pc1_intf_ips = get_intf_ips('PortChannel0001', cfg_facts)
+        pc1_v4_neigh_ips = [ str(ip.ip+1) for ip in pc1_intf_ips['ipv4'] ]
+        pc1_v6_neigh_ips = [ str(ip.ip+1) for ip in pc1_intf_ips['ipv6'] ]
+
+        pc2_if_name = 'PortChannel0002'
+        pc2_if_ips = get_intf_ips(pc2_if_name, cfg_facts)
+        pc2_v4_neigh_ips = [ (pc2_if_name, str(ip.ip+1)) for ip in pc2_if_ips['ipv4'] ]
+        pc2_v6_neigh_ips = [ (pc2_if_name, str(ip.ip+1)) for ip in pc2_if_ips['ipv6'] ]
+
+        pc4_if_name = 'PortChannel0004'
+        pc4_if_ips = get_intf_ips(pc4_if_name, cfg_facts)
+        pc4_v4_neigh_ips = [ (pc4_if_name, str(ip.ip+1)) for ip in pc4_if_ips['ipv4'] ]
+        pc4_v6_neigh_ips = [ (pc4_if_name, str(ip.ip+1)) for ip in pc4_if_ips['ipv6'] ]
+
+        redirect_dst_ips = pc2_v4_neigh_ips + pc4_v4_neigh_ips
+        redirect_dst_ipv6s = pc2_v6_neigh_ips + pc4_v6_neigh_ips
+        redirect_dst_ports = []
+        redirect_dst_ports.append(vrf_intf_ports['Vrf1'][pc2_if_name])
+        redirect_dst_ports.append(vrf_intf_ports['Vrf2'][pc4_if_name])
+
+        self.c_vars['src_ports'] = src_ports
+        self.c_vars['dst_ports'] = dst_ports
+        self.c_vars['redirect_dst_ports'] = redirect_dst_ports
+        self.c_vars['pc1_v4_neigh_ips'] = pc1_v4_neigh_ips
+        self.c_vars['pc1_v6_neigh_ips'] = pc1_v6_neigh_ips
+
+        # load acl redirect configuration
+        extra_vars = {
+            'src_port': get_vlan_members('Vlan1000', cfg_facts)[0],
+            'redirect_dst_ips': redirect_dst_ips,
+            'redirect_dst_ipv6s': redirect_dst_ipv6s
+        }
+        duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
+        duthost.template(src="vrf/vrf_acl_redirect_v6.j2", dest="/tmp/vrf_acl_redirect_v6.json")
+        duthost.shell("config load -y /tmp/vrf_acl_redirect_v6.json")
+
+        # -------- Testing ----------
+        yield
+
+        # -------- Teardown ----------
+        duthost.shell("redis-cli -n 4 del 'ACL_RULE|VRF_ACL_REDIRECT_V6|rule1'")
+        duthost.shell("redis-cli -n 4 del 'ACL_TABLE|VRF_ACL_REDIRECT_V6'")
+
+    def test_origin_ports_recv_no_pkts_v6(self, partial_ptf_runner, ptfhost):
+        # verify origin dst ports should not receive packets any more
+        gen_specific_neigh_file(self.c_vars['pc1_v6_neigh_ips'], self.c_vars['dst_ports'],
+                                '/tmp/pc01_neigh_ipv6.txt', ptfhost)
+
+        partial_ptf_runner(
+            testname="vrf_test.FwdTest",
+            pkt_action='drop',
+            src_ports=self.c_vars['src_ports'],
+            fib_info_files=['/tmp/pc01_neigh_ipv6.txt']
+        )
+
     def test_redirect_to_new_ports_v6(self, partial_ptf_runner, ptfhost):
         # verify redicect ports should receive packets
         gen_specific_neigh_file(self.c_vars['pc1_v6_neigh_ips'], self.c_vars['redirect_dst_ports'],
@@ -790,9 +848,7 @@ class TestVrfAclRedirect():
             fib_info_files=['/tmp/redirect_pc01_neigh_ipv6.txt']
         )
 
-
 class TestVrfLoopbackIntf():
-
     c_vars = {}
     announce_prefix = '10.10.10.0/26'
 
@@ -826,6 +882,8 @@ class TestVrfLoopbackIntf():
                 ptfhost.shell("ip netns exec {} ip route add {} nexthop via {} ".format(g_vars['vlan_peer_vrf2ns_map']['Vrf2'], ip, nexthop))
 
         duthost.shell("sysctl -w net.ipv6.ip_nonlocal_bind=1")
+        time.sleep(2)
+
         # -------- Testing ----------
         yield
 
@@ -872,7 +930,11 @@ class TestVrfLoopbackIntf():
         # When there are only vrf bgp sessions and
         # net.ipv4.tcp_l3mdev_accept=1, bgpd(7.0) does
         # not create bgp socket for sessions.
-        duthost.shell("vtysh -c 'config terminal' -c 'router bgp 65444'")
+        #duthost.shell("vtysh -c 'config terminal' -c 'router bgp 65444'")
+
+        duthost.copy(src="vrf/vrf_loopback_neigh.json", dest="/tmp")
+        duthost.shell("config load -y /tmp/vrf_loopback_neigh.json")
+        time.sleep(10)
 
         # vrf1 args, vrf2 use the same as vrf1
         peer_range     = IPNetwork(cfg_facts['BGP_PEER_RANGE']['BGPSLBPassive']['ip_range'][0])
@@ -916,7 +978,7 @@ class TestVrfLoopbackIntf():
         ptfhost.template(src="vrf/bgp_speaker/start.j2", dest="%s/%s" % (exabgp_dir, 'start.sh'), mode="u+rwx")
 
         # kill exabgp if any
-        ptfhost.shell("pkill exabgp || true")
+        ptfhost.shell("ps -ef | grep config.ini | grep -v grep | awk '{print $2}' | xargs kill || true")
 
         # start exabgp instance
         ptfhost.shell("bash %s/start.sh" % exabgp_dir)
@@ -938,13 +1000,17 @@ class TestVrfLoopbackIntf():
             duthost.shell("vtysh -c 'configure terminal' -c 'no ip route {} {} vrf {}'".format(peer_range, ips['ipv4'][0], vrf))
 
         # kill exabgp
-        ptfhost.shell("pkill exabgp || true")
+        #if we kill exabgp,then supervisorctl will restart exabgp immediately, but it can not
+        # get the config file from sonic-mgmt, so dut can not get routes
+        ptfhost.shell("ps -ef | grep config.ini | grep -v grep | awk '{print $2}' | xargs kill || true")
 
         # del speaker ips from ptf ports
         for vrf, vlan_peer_port in g_vars['vlan_peer_ips']:
             ns = g_vars['vlan_peer_vrf2ns_map'][vrf]
             ptfhost.shell("ip netns exec {} ip address del {} dev e{}mv1".format(ns, ptf_speaker_ip, vlan_peer_port))
 
+        duthost.shell("redis-cli -n 4 del 'BGP_NEIGHBOR|Vrf1|10.255.0.1'")
+        duthost.shell("redis-cli -n 4 del 'BGP_NEIGHBOR|Vrf2|10.255.0.1'")
         # FIXME workround to overcome the bgp socket issue
         #duthost.shell("vtysh -c 'config terminal' -c 'no router bgp 65444'")
 
@@ -967,6 +1033,7 @@ class TestVrfLoopbackIntf():
 class TestVrfWarmReboot():
     @pytest.fixture(scope="class", autouse=True)
     def setup_vrf_warm_reboot(self, ptfhost, tbinfo):
+        pytest.skip("No support for warm reboot on Th4")
         # -------- Setup ----------
         gen_vrf_fib_file('Vrf1', tbinfo, ptfhost,
                          dst_intfs=['PortChannel0001', 'PortChannel0002'],
@@ -982,6 +1049,7 @@ class TestVrfWarmReboot():
         pass
 
     def test_vrf_swss_warm_reboot(self, duthosts, rand_one_dut_hostname, cfg_facts, partial_ptf_runner):
+        pytest.skip("No support for warm reboot on Th4")
         duthost = duthosts[rand_one_dut_hostname]
         # enable swss warm-reboot
         duthost.shell("config warm_restart enable swss")
@@ -1029,6 +1097,7 @@ class TestVrfWarmReboot():
                "All interfaces should be up!"
 
     def test_vrf_system_warm_reboot(self, duthosts, rand_one_dut_hostname, localhost, cfg_facts, partial_ptf_runner):
+        pytest.skip("No support for warm reboot on Th4")
         duthost = duthosts[rand_one_dut_hostname]
         exc_que = Queue.Queue()
         params = {
@@ -1071,10 +1140,10 @@ class TestVrfWarmReboot():
 
 
 class TestVrfCapacity():
-    VRF_CAPACITY    = 1000
+    VRF_CAPACITY    = 63
 
     # limit the number of vrfs to be covered to limit script execution time
-    TEST_COUNT      = 100
+    TEST_COUNT      = 30
 
     src_base_vid  = 2000
     dst_base_vid  = 3000
@@ -1182,6 +1251,7 @@ class TestVrfCapacity():
 
         # setup static routes
         duthost.template(src='vrf/vrf_capacity_route_cfg.j2', dest='/tmp/vrf_capacity_route_cfg.sh', mode="0755")
+
         duthost.shell("/tmp/vrf_capacity_route_cfg.sh")
 
         # setup peer ip addresses on ptf
@@ -1436,6 +1506,7 @@ class TestVrfDeletion():
             for ver, ips in ip_facts.iteritems():
                 for ip in ips:
                     duthost.shell("config interface ip add {} {}".format(intf, ip))
+                    time.sleep(0.1)
 
     @pytest.fixture(scope="class", autouse=True)
     def setup_vrf_deletion(self, duthosts, rand_one_dut_hostname, ptfhost, tbinfo, cfg_facts):
@@ -1454,6 +1525,7 @@ class TestVrfDeletion():
         gen_vrf_neigh_file('Vrf2', ptfhost, render_file="/tmp/vrf2_neigh.txt")
 
         duthost.shell("config vrf del Vrf1")
+        time.sleep(1)
 
         # -------- Testing ----------
         yield
@@ -1468,7 +1540,6 @@ class TestVrfDeletion():
         duthost = duthosts[rand_one_dut_hostname]
         self.restore_vrf(duthost)
         self.c_vars['restore_vrf'] = False  # Mark to skip restore vrf during teardown
-
         # check bgp session state after restore
         assert wait_until(120, 10, check_bgp_facts, duthost, cfg_facts), \
                "Bgp sessions should be re-estabalished after restore Vrf1"
