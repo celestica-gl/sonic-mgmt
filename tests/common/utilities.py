@@ -81,7 +81,7 @@ def wait_until(timeout, interval, condition, *args, **kwargs):
         return False
 
 
-def wait_tcp_connection(client, server_hostname, listening_port, timeout_s = 30):
+def wait_tcp_connection(client, server_hostname, listening_port, timeout_s = 60):
     """
     @summary: Wait until tcp connection is ready or timeout
     @param client: The tcp client host instance
