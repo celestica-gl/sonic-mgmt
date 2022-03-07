@@ -303,7 +303,6 @@ def setup_vlan_peer(duthost, ptfhost, cfg_facts):
                 duthost.shell("{} -I {} {} -c 1 -f -W1".format(ping_cmd, vrf, neigh_ip.ip), module_ignore_errors=True)
 
             vlan_peer_ips[(vrf, vlan_peer_port)][ver].append(neigh_ip)
-
     return vlan_peer_ips, vlan_peer_vrf2ns_map
 
 def cleanup_vlan_peer(ptfhost, vlan_peer_vrf2ns_map):
@@ -726,6 +725,9 @@ class TestVrfAclRedirectV4():
             'redirect_dst_ipv6s': redirect_dst_ipv6s
         }
         duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
+        # remove L3 type ACL entry of dataacl
+        duthost.shell("config acl remove table DATAACL")
+
         duthost.template(src="vrf/vrf_acl_redirect_v4.j2", dest="/tmp/vrf_acl_redirect_v4.json")
         duthost.shell("config load -y /tmp/vrf_acl_redirect_v4.json")
 
@@ -735,6 +737,9 @@ class TestVrfAclRedirectV4():
         # -------- Teardown ----------
         duthost.shell("redis-cli -n 4 del 'ACL_RULE|VRF_ACL_REDIRECT_V4|rule1'")
         duthost.shell("redis-cli -n 4 del 'ACL_TABLE|VRF_ACL_REDIRECT_V4'")
+        #restore dataacl
+        duthost.copy(src="vrf/vrf_restore_dataacl.json", dest="/tmp")
+        duthost.shell("config load -y /tmp/vrf_restore_dataacl.json")
 
     def test_origin_ports_recv_no_pkts_v4(self, partial_ptf_runner, ptfhost):
         # verify origin dst ports should not receive packets any more
@@ -812,6 +817,8 @@ class TestVrfAclRedirectV6():
             'redirect_dst_ipv6s': redirect_dst_ipv6s
         }
         duthost.host.options['variable_manager'].extra_vars.update(extra_vars)
+        # remove L3 type ACL entry of dataacl
+        duthost.shell("config acl remove table DATAACL")
         duthost.template(src="vrf/vrf_acl_redirect_v6.j2", dest="/tmp/vrf_acl_redirect_v6.json")
         duthost.shell("config load -y /tmp/vrf_acl_redirect_v6.json")
 
@@ -821,6 +828,9 @@ class TestVrfAclRedirectV6():
         # -------- Teardown ----------
         duthost.shell("redis-cli -n 4 del 'ACL_RULE|VRF_ACL_REDIRECT_V6|rule1'")
         duthost.shell("redis-cli -n 4 del 'ACL_TABLE|VRF_ACL_REDIRECT_V6'")
+        #restore dataacl
+        duthost.copy(src="vrf/vrf_restore_dataacl.json", dest="/tmp")
+        duthost.shell("config load -y /tmp/vrf_restore_dataacl.json")
 
     def test_origin_ports_recv_no_pkts_v6(self, partial_ptf_runner, ptfhost):
         # verify origin dst ports should not receive packets any more
@@ -934,7 +944,7 @@ class TestVrfLoopbackIntf():
 
         duthost.copy(src="vrf/vrf_loopback_neigh.json", dest="/tmp")
         duthost.shell("config load -y /tmp/vrf_loopback_neigh.json")
-        time.sleep(10)
+        time.sleep(5)
 
         # vrf1 args, vrf2 use the same as vrf1
         peer_range     = IPNetwork(cfg_facts['BGP_PEER_RANGE']['BGPSLBPassive']['ip_range'][0])
@@ -987,7 +997,7 @@ class TestVrfLoopbackIntf():
         ptfhost.shell("pgrep exabgp")
 
         # make sure routes announced to bgp neighbors
-        time.sleep(10)
+        time.sleep(20)
 
         # -------- Testing ----------
 

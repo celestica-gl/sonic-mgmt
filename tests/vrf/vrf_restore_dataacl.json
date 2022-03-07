@@ -1,0 +1,15 @@
+{
+    "ACL_TABLE": {
+        "DATAACL": {
+            "policy_desc": "DATAACL",
+            "ports": [
+                "PortChannel0001",
+                "PortChannel0002",
+                "PortChannel0003",
+                "PortChannel0004"
+            ],
+            "stage": "ingress",
+            "type": "L3"
+        }
+    }
+}
