@@ -3,6 +3,8 @@ import time
 import pytest
 import httplib
 
+from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
+
 SERVER_FILE = 'platform_api_server.py'
 SERVER_PORT = 8000
 
@@ -22,7 +24,8 @@ def start_platform_api_service(duthosts, enum_rand_one_per_hwsku_hostname, local
                              module_ignore_errors=True)
     if 'exception' in res:
         # TODO: Remove this check once we no longer need to support Python 2
-        if request.cls.__name__ == "TestSfpApi" and duthost.facts.get("asic_type") == "mellanox":
+        if request.cls.__name__ == "TestSfpApi" and duthost.facts.get("asic_type") == "mellanox" \
+                and duthost.sonic_release in ['202012', '202106']:
             # On Mellanox platform, the SFP APIs are not migrated to python3 yet,
             # thus we have to make it as an exception here.
             py3_platform_api_available = False
@@ -96,3 +99,15 @@ def platform_api_conn(duthosts, enum_rand_one_per_hwsku_hostname, start_platform
         yield conn
     finally:
         conn.close()
+
+@pytest.fixture(autouse=True)
+def check_not_implemented_warnings(duthosts, enum_rand_one_per_hwsku_hostname):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+
+    loganalyzer = LogAnalyzer(ansible_host=duthost,
+                                  marker_prefix="platformapi_test")
+    marker = loganalyzer.init()
+    yield
+    loganalyzer.match_regex.extend(['WARNING pmon#platform_api_server.py: API.+not implemented'])
+    loganalyzer.analyze(marker)
+    

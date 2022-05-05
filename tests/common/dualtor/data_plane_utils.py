@@ -1,8 +1,11 @@
-from collections import defaultdict
 import pytest
 import json
+import time
 from tests.common.dualtor.dual_tor_io import DualTorIO
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.utilities import InterruptableThread
+from tests.common.utilities import wait_until
+from tests.common.plugins.sanity_check import print_logs
 import threading
 import logging
 from natsort import natsorted
@@ -112,21 +115,20 @@ def validate_traffic_results(tor_IO, allowed_disruption, delay):
         if bool(disruption_after_traffic):
             failures.append("Traffic on server {} was disrupted after test end, "
                             "missing {} packets from the end of the packet flow"
-                            .format(server_ip, disruption_after_traffic))
+                            .format(server_ip, result['sent_packets'] - disruption_after_traffic))
 
     pytest_assert(len(failures) == 0, '\n' + '\n'.join(failures))
 
-def verify_and_report(tor_IO, verify, delay):
+def verify_and_report(tor_IO, verify, delay, allowed_disruption):
     # Wait for the IO to complete before doing checks
     if verify:
-        allowed_disruption = 0 if delay == 0 else 1
         validate_traffic_results(tor_IO, allowed_disruption=allowed_disruption,
             delay=delay)
     return tor_IO.get_test_results()
 
 
 def run_test(duthosts, activehost, ptfhost, ptfadapter, action,
-            tbinfo, tor_vlan_port, send_interval, traffic_direction):
+            tbinfo, tor_vlan_port, send_interval, traffic_direction, stop_after):
     io_ready = threading.Event()
     standbyhost = get_standbyhost(duthosts, activehost)
     tor_IO = DualTorIO(activehost, standbyhost, ptfhost, ptfadapter, tbinfo,
@@ -136,17 +138,29 @@ def run_test(duthosts, activehost, ptfhost, ptfadapter, action,
     elif traffic_direction == "t1_to_server":
         traffic_generator = tor_IO.generate_from_t1_to_server
 
-    send_and_sniff = threading.Thread(target=tor_IO.start_io_test,
-        kwargs={'traffic_generator': traffic_generator})
+    send_and_sniff = InterruptableThread(
+        target=tor_IO.start_io_test,
+        kwargs={'traffic_generator': traffic_generator}
+    )
+    send_and_sniff.set_error_handler(lambda *args, **kargs: io_ready.set())
 
     send_and_sniff.start()
+    io_ready.wait()
     if action:
         # do not perform the provided action until
         # IO threads (sender and sniffer) are ready
-        io_ready.wait()
         logger.info("Sender and sniffer threads started, ready to execute the "\
             "callback action")
+        time.sleep(15)
         action()
+    # do not time-wait the test, if early stop is not requested (when stop_after=None)
+    if stop_after is not None:
+        wait_until(timeout=stop_after, interval=0.5, delay=0, condition=\
+            lambda: not send_and_sniff.is_alive)
+        if send_and_sniff.is_alive():
+            logger.info("Sender/Sniffer threads are still running. Sending signal "\
+                "to stop the IO test after {}s of the action".format(stop_after))
+            tor_IO.stop_early = True
     # Wait for the IO to complete before doing checks
     send_and_sniff.join()
     tor_IO.examine_flow()
@@ -154,6 +168,7 @@ def run_test(duthosts, activehost, ptfhost, ptfadapter, action,
 
 
 def cleanup(ptfadapter, duthosts_list):
+    print_logs(duthosts_list, print_dual_tor_logs=True)
     # cleanup torIO
     ptfadapter.dataplane.flush()
     for duthost in duthosts_list:
@@ -182,9 +197,9 @@ def send_t1_to_server_with_action(duthosts, ptfhost, ptfadapter, tbinfo):
     """
     arp_setup(ptfhost)
     
-    duthosts_list = []
     def t1_to_server_io_test(activehost, tor_vlan_port=None,
-                            delay=0, action=None, verify=False, send_interval=None):
+                            delay=0, allowed_disruption=0, action=None, verify=False, send_interval=0.01,
+                            stop_after=None):
         """
         Helper method for `send_t1_to_server_with_action`.
         Starts sender and sniffer before performing the action on the tor host.
@@ -202,20 +217,27 @@ def send_t1_to_server_with_action(duthosts, ptfhost, ptfadapter, tbinfo):
                 between server to T1 router.
             verify (boolean): If set to True, test will automatically verify packet
                 drops/duplication based on given qualification criteria
+            send_interval (int): Sleep duration between two sent packets
+            stop_after (int): Wait time after which sender/sniffer threads are terminated
+                default - None: Early termination will not be performed
         Returns:
             data_plane_test_report (dict): traffic test statistics (sent/rcvd/dropped)
         """
-        duthosts_list.append(activehost)
 
         tor_IO = run_test(duthosts, activehost, ptfhost, ptfadapter,
                         action, tbinfo, tor_vlan_port, send_interval,
-                        traffic_direction="t1_to_server")
+                        traffic_direction="t1_to_server", stop_after=stop_after)
 
-        return verify_and_report(tor_IO, verify, delay)
+        # If a delay is allowed but no numebr of allowed disruptions
+        # is specified, default to 1 allowed disruption
+        if delay and not allowed_disruption:
+            allowed_disruption = 1
+
+        return verify_and_report(tor_IO, verify, delay, allowed_disruption)
 
     yield t1_to_server_io_test
 
-    cleanup(ptfadapter, duthosts_list)
+    cleanup(ptfadapter, duthosts)
 
 
 @pytest.fixture
@@ -240,9 +262,9 @@ def send_server_to_t1_with_action(duthosts, ptfhost, ptfadapter, tbinfo):
     """
     arp_setup(ptfhost)
 
-    duthosts_list = []
     def server_to_t1_io_test(activehost, tor_vlan_port=None,
-                            delay=0, action=None, verify=False, send_interval=None):
+                            delay=0, allowed_disruption=0, action=None, verify=False, send_interval=0.01,
+                            stop_after=None):
         """
         Helper method for `send_server_to_t1_with_action`.
         Starts sender and sniffer before performing the action on the tor host.
@@ -259,17 +281,24 @@ def send_server_to_t1_with_action(duthosts, ptfhost, ptfadapter, tbinfo):
                 between server to T1 router.
             verify (boolean): If set to True, test will automatically verify packet
                 drops/duplication based on given qualification critera
+            send_interval (int): Sleep duration between two sent packets
+            stop_after (int): Wait time after which sender/sniffer threads are terminated
+                default - None: Early termination will not be performed
         Returns:
             data_plane_test_report (dict): traffic test statistics (sent/rcvd/dropped)
         """
-        duthosts_list.append(activehost)
 
         tor_IO = run_test(duthosts, activehost, ptfhost, ptfadapter,
                         action, tbinfo, tor_vlan_port, send_interval,
-                        traffic_direction="server_to_t1")
+                        traffic_direction="server_to_t1", stop_after=stop_after)
 
-        return verify_and_report(tor_IO, verify, delay)
+        # If a delay is allowed but no numebr of allowed disruptions
+        # is specified, default to 1 allowed disruption
+        if delay and not allowed_disruption:
+            allowed_disruption = 1
+
+        return verify_and_report(tor_IO, verify, delay, allowed_disruption)
 
     yield server_to_t1_io_test
 
-    cleanup(ptfadapter, duthosts_list)
+    cleanup(ptfadapter, duthosts)

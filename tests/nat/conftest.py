@@ -9,6 +9,7 @@ from nat_helpers import GLOBAL_NAT_TIMEOUT
 from nat_helpers import GLOBAL_TCP_NAPT_TIMEOUT
 from nat_helpers import GLOBAL_UDP_NAPT_TIMEOUT
 from nat_helpers import FULL_CONE_TEST_SUBNET
+from nat_helpers import PORT_CHANNEL_TEMP
 from nat_helpers import conf_ptf_interfaces
 from nat_helpers import teardown_test_env
 from nat_helpers import exec_command
@@ -85,6 +86,7 @@ def setup_test_env(request, ptfhost, duthost, tbinfo):
     config_port_indices = cfg_facts['port_index_map']
     config_portchannels = cfg_facts.get('PORTCHANNEL', {})
     ptf_ports_available_in_topo = ptfhost.host.options['variable_manager'].extra_vars.get("ifaces_map")
+    port_channel_1_name = PORT_CHANNEL_TEMP.format(1)
     # Get outer port indices
     for port_id in config_portchannels.keys():
         port = config_portchannels[port_id]['members'][0]
@@ -118,7 +120,8 @@ def setup_test_env(request, ptfhost, duthost, tbinfo):
                          "indices_to_ports_config": indices_to_ports_config,
                          "ptf_ports_available_in_topo": ptf_ports_available_in_topo,
                          "config_portchannels": config_portchannels,
-                         "pch_ips": {"PortChannel0001": duthost.setup()['ansible_facts']['ansible_PortChannel0001']['ipv4']['address']},
+                         "pch_ips": {port_channel_1_name: duthost.setup()['ansible_facts']['ansible_{}'.format(port_channel_1_name)]['ipv4']['address']},
+                         "pch_masks": {port_channel_1_name: duthost.setup()['ansible_facts']['ansible_{}'.format(port_channel_1_name)]['ipv4']['netmask']},
                          "outer_vrf": ["red"],
                          "inner_vrf": ["blue", "yellow"],
                          interface_type: {"vrf_conf": SETUP_CONF[interface_type]["vrf"],
@@ -145,7 +148,7 @@ def setup_test_env(request, ptfhost, duthost, tbinfo):
     conf_ptf_interfaces(tbinfo, ptfhost, duthost, setup_information, interface_type, teardown=True)
 
 
-def nat_global_config(duthost):
+def nat_global_config(duthost, timeout_in=GLOBAL_NAT_TIMEOUT, tcp_timeout_in=GLOBAL_TCP_NAPT_TIMEOUT, udp_timeout_in=GLOBAL_UDP_NAPT_TIMEOUT):
     """
     sets DUT's global NAT configuration;
     """
@@ -153,9 +156,9 @@ def nat_global_config(duthost):
     duthost.command("sudo config feature state nat enabled")
     # Set nat global values
     duthost.command("sudo config nat feature enable")
-    duthost.command("sudo config nat set timeout {}".format(GLOBAL_NAT_TIMEOUT))
-    duthost.command("sudo config nat set tcp-timeout {}".format(GLOBAL_TCP_NAPT_TIMEOUT))
-    duthost.command("sudo config nat set udp-timeout {}".format(GLOBAL_UDP_NAPT_TIMEOUT))
+    duthost.command("sudo config nat set timeout {}".format(timeout_in))
+    duthost.command("sudo config nat set tcp-timeout {}".format(tcp_timeout_in))
+    duthost.command("sudo config nat set udp-timeout {}".format(udp_timeout_in))
 
     # Verify nat global values
     output = duthost.command("show nat config globalvalues")
@@ -166,9 +169,9 @@ def nat_global_config(duthost):
     udp_timeout = re.search(r"UDP Timeout.+: (\d+)", show_cmd_output).group(1)
 
     assert admin_state == 'enabled', "NAT was not enabled"
-    assert int(timeout) == GLOBAL_NAT_TIMEOUT, "Global NAT timeout was not set to {}".format(GLOBAL_NAT_TIMEOUT)
-    assert int(tcp_timeout) == GLOBAL_TCP_NAPT_TIMEOUT, "Global TCP NAT timeout was not set to {}".format(GLOBAL_TCP_NAPT_TIMEOUT)
-    assert int(udp_timeout) == GLOBAL_UDP_NAPT_TIMEOUT, "Global UDP NAT timeout was not set to {}".format(GLOBAL_UDP_NAPT_TIMEOUT)
+    assert int(timeout) == timeout_in, "Global NAT timeout was not set to {}".format(timeout_in)
+    assert int(tcp_timeout) == tcp_timeout_in, "Global TCP NAT timeout was not set to {}".format(tcp_timeout_in)
+    assert int(udp_timeout) == udp_timeout_in, "Global UDP NAT timeout was not set to {}".format(udp_timeout_in)
 
 
 @pytest.fixture(scope='module', autouse=True)
@@ -185,7 +188,7 @@ def apply_global_nat_config(duthost, config_nat_feature_enabled):
     nat_global_config(duthost)
     yield
     # reload config on teardown
-    config_reload(duthost, config_source='minigraph')
+    config_reload(duthost, config_source='minigraph', safe_reload=True)
 
 
 @pytest.fixture()
@@ -201,7 +204,7 @@ def reload_dut_config(request, duthost, setup_test_env):
     dut_iface = setup_data[interface_type]["vrf_conf"]["red"]["dut_iface"]
     gw_ip = setup_data[interface_type]["vrf_conf"]["red"]["gw"]
     mask = setup_data[interface_type]["vrf_conf"]["red"]["mask"]
-    config_reload(duthost, config_source='minigraph')
+    config_reload(duthost, config_source='minigraph', safe_reload=True)
     pch_ip = setup_info["pch_ips"][dut_iface]
     duthost.shell("sudo config interface ip remove {} {}/31".format(dut_iface, pch_ip))
     duthost.shell("sudo config interface ip add {} {}/{}".format(dut_iface, gw_ip, mask))

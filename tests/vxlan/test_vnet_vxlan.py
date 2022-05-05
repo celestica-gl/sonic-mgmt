@@ -1,25 +1,43 @@
 import json
 import logging
+import re
 import pytest
 
 from datetime import datetime
+from tests.common.helpers.assertions import pytest_assert
+from tests.common.utilities import wait_until
 from tests.ptf_runner import ptf_runner
-from vnet_constants import CLEANUP_KEY
+from vnet_constants import CLEANUP_KEY, VXLAN_UDP_SPORT_KEY, VXLAN_UDP_SPORT_MASK_KEY, VXLAN_RANGE_ENABLE_KEY, DUT_VNET_NBR_JSON
+
 from vnet_utils import generate_dut_config_files, safe_open_template, \
                        apply_dut_config_files, cleanup_dut_vnets, cleanup_vxlan_tunnels, cleanup_vnet_routes
 
 from tests.common.fixtures.ptfhost_utils import remove_ip_addresses, change_mac_addresses, \
                                                 copy_arp_responder_py, copy_ptftests_directory
 
+import tests.arp.test_wr_arp as test_wr_arp
+
+from tests.common.config_reload import config_reload
+
 logger = logging.getLogger(__name__)
 
 pytestmark = [
     pytest.mark.topology("t0"),
     pytest.mark.sanity_check(post_check=True),
-    pytest.mark.asic("mellanox")
+    pytest.mark.asic("mellanox"),
+    pytest.mark.disable_loganalyzer
 ]
 
 vlan_tagging_mode = ""
+
+@pytest.fixture(scope='module', autouse=True)
+def load_minigraph_after_test(rand_selected_dut):
+    """
+    Restore config_db as vnet with wram-reboot will write testing config into
+    config_db.json
+    """
+    yield
+    config_reload(rand_selected_dut, config_source='minigraph')
 
 def prepare_ptf(ptfhost, mg_facts, dut_facts, vnet_config):
     """
@@ -83,14 +101,14 @@ def setup(duthosts, rand_one_dut_hostname, ptfhost, minigraph_facts, vnet_config
 
     return minigraph_facts
 
-@pytest.fixture(params=["Disabled", "Enabled", "Cleanup"])
-def vxlan_status(setup, request, duthosts, rand_one_dut_hostname, vnet_test_params, vnet_config):
+@pytest.fixture(params=["Disabled", "Enabled", "WR_ARP", "Cleanup"])
+def vxlan_status(setup, request, duthosts, rand_one_dut_hostname, ptfhost, vnet_test_params, vnet_config, creds, tbinfo):
     """
     Paramterized fixture that tests the Disabled, Enabled, and Cleanup configs for VxLAN
 
     Args:
         setup: Pytest fixture that provides access to minigraph facts
-        request: Contains the parameter (Disabled, Enabled, or Cleanup) for the current test iteration
+        request: Contains the parameter (Disabled, Enabled, WR_ARP, or Cleanup) for the current test iteration
         duthost: DUT host object
 
     Returns:
@@ -113,7 +131,8 @@ def vxlan_status(setup, request, duthosts, rand_one_dut_hostname, vnet_test_para
             duthost.shell("redis-cli -n 4 del \"VLAN_MEMBER|{}|{}\"".format(attached_vlan, vlan_member))
 
         apply_dut_config_files(duthost, vnet_test_params)
-
+        # Check arp table status in a loop with delay.
+        pytest_assert(wait_until(120, 20, 10, is_neigh_reachable, duthost, vnet_config), "Neighbor is unreachable")
         vxlan_enabled = True
     elif request.param == "Cleanup" and vnet_test_params[CLEANUP_KEY]:
         if vlan_tagging_mode != "":
@@ -123,7 +142,33 @@ def vxlan_status(setup, request, duthosts, rand_one_dut_hostname, vnet_test_para
         cleanup_vnet_routes(duthost, vnet_config)
         cleanup_dut_vnets(duthost, setup, vnet_config)
         cleanup_vxlan_tunnels(duthost, vnet_test_params)
+    elif request.param == "WR_ARP":
+        testWrArp = test_wr_arp.TestWrArp()
+        testWrArp.Setup(duthost, ptfhost, tbinfo)
+        try:
+            test_wr_arp.TestWrArp.testWrArp(testWrArp, request, duthost, ptfhost, creds)
+        finally:
+            testWrArp.Teardown(duthost)
+
     return vxlan_enabled, request.param
+
+
+def is_neigh_reachable(duthost, vnet_config):
+    expected_neigh_list = vnet_config["vnet_nbr_list"]
+    ip_neigh_cmd_output = duthost.shell("sudo ip -4 neigh")['stdout']
+    for exp_neigh in expected_neigh_list:
+        if exp_neigh["ifname"].startswith("Vlan"):
+            regexp = '{}.*{}.*?REACHABLE'.format(exp_neigh["ip"], exp_neigh["ifname"])
+            if re.search(regexp, ip_neigh_cmd_output):
+                logger.info('Neigh {} {} is reachable'.format(exp_neigh["ip"], exp_neigh["ifname"]))
+            else:
+                logger.error('Neigh {} {} is not reachable'.format(exp_neigh["ip"], exp_neigh["ifname"]))
+                logger.info("Reapplying config {}".format(DUT_VNET_NBR_JSON))
+                duthost.shell("sudo config load {} -y".format(DUT_VNET_NBR_JSON))
+                return False
+        else:
+            logger.warning('Neighbor expected but not found: {} {}'.format(exp_neigh["ip"], exp_neigh["ifname"]))
+    return True
 
 
 def test_vnet_vxlan(setup, vxlan_status, duthosts, rand_one_dut_hostname, ptfhost, vnet_test_params, creds):
@@ -148,7 +193,12 @@ def test_vnet_vxlan(setup, vxlan_status, duthosts, rand_one_dut_hostname, ptfhos
                   "config_file": '/tmp/vnet.json',
                   "sonic_admin_user": creds.get('sonicadmin_user'),
                   "sonic_admin_password": creds.get('sonicadmin_password'),
-                  "dut_host": duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']}
+                  "dut_host": duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host'],
+                  "vxlan_udp_sport" : vnet_test_params[VXLAN_UDP_SPORT_KEY],
+                  "vxlan_udp_sport_mask" : vnet_test_params[VXLAN_UDP_SPORT_MASK_KEY],
+                  "vxlan_range_enable" : vnet_test_params[VXLAN_RANGE_ENABLE_KEY]
+                  }
+
     if scenario == "Cleanup":
         ptf_params["routes_removed"] = True
 
