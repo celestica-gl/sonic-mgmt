@@ -14,12 +14,12 @@ def is_supervisor_node(inv_files, hostname):
             you can be get it from get_inventory_files in tests.common.utilities
      @param hostname: hostname as defined in the inventory
     Returns:
-          Currently, we are using 'type' in the inventory to make the decision. If 'type' for the node is defined in
+          Currently, we are using 'card_type' in the inventory to make the decision. If 'card_type' for the node is defined in
           the inventory, and it is 'supervisor', then return True, else return False. In future, we can change this
           logic if possible to derive it from the DUT.
     """
     dut_vars = get_host_visible_vars(inv_files, hostname)
-    if 'type' in dut_vars and dut_vars['type'] == 'supervisor':
+    if dut_vars and 'card_type' in dut_vars and dut_vars['card_type'] == 'supervisor':
         return True
     return False
 
@@ -43,8 +43,8 @@ def is_container_running(duthost, container_name):
     Returns:
         Boolean value. True represents the container is running
     """
-    result = duthost.shell("docker inspect -f \{{\{{.State.Running\}}\}} {}".format(container_name))
-    return result["stdout_lines"][0].strip() == "true"
+    running_containers = duthost.shell(r"docker ps -f 'status=running' --format \{\{.Names\}\}")['stdout_lines']
+    return container_name in running_containers
 
 
 def check_container_state(duthost, container_name, should_be_running):
@@ -88,6 +88,7 @@ def clear_failed_flag_and_restart(duthost, container_name):
     duthost.shell("sudo systemctl start {}.service".format(container_name))
     restarted = wait_until(CONTAINER_RESTART_THRESHOLD_SECS,
                            CONTAINER_CHECK_INTERVAL_SECS,
+                           0,
                            check_container_state, duthost, container_name, True)
     pytest_assert(restarted, "Failed to restart container '{}' after reset-failed was cleared".format(container_name))
 
@@ -159,3 +160,123 @@ def get_program_info(duthost, container_name, program_name):
                     .format(program_name, program_status, program_pid))
 
     return program_status, program_pid
+
+
+def get_disabled_container_list(duthost):
+    """Gets the container/service names which are disabled.
+
+    Args:
+        duthost: Host DUT.
+
+    Return:
+        A list includes the names of disabled containers/services
+    """
+    disabled_containers = []
+
+    container_status, succeeded = duthost.get_feature_status()
+    pytest_assert(succeeded, "Failed to get status ('enabled'|'disabled') of containers. Exiting...")
+
+    for container_name, status in container_status.items():
+        if "disabled" in status:
+            disabled_containers.append(container_name)
+
+    return disabled_containers
+
+
+def check_link_status(duthost, iface_list, expect_status):
+    """
+    check if the link status specified in the iface_list equal to expect status
+    :param duthost: dut host object
+    :param iface_list: the interface list
+    :param expect_status: expected status for the interface specified in the iface_list
+    :return: True if the status of all the interfaces specified in the iface_list equal to expect status, else False
+    """
+    int_status = duthost.show_interface(command="status")['ansible_facts']['int_status']
+    for intf in iface_list:
+        if int_status[intf]['admin_state'] == 'up' and int_status[intf]['oper_state'] != expect_status:
+            return False
+    return True
+
+
+def encode_dut_and_container_name(dut_name, container_name):
+    """Gets a string by combining dut name and container name.
+
+    Args:
+      dut_name: A string represents name of DuT.
+      container_name: A string represents name of container.
+
+    Returns:
+      A string includes the DuT and container names.
+    """
+
+    return dut_name + "|" + container_name
+
+
+def decode_dut_and_container_name(name_str):
+    """Gets DuT name and container name by parsing the string 'name_str'.
+
+    Args:
+      A string includes the DuT and container names.
+
+    Returns:
+      dut_name: A string represents name of DuT.
+      container_name: A string represents name of container.
+    """
+    dut_name = ""
+    container_name = ""
+
+    name_list = name_str.strip().split("|")
+    if len(name_list) >= 2:
+        dut_name = name_list[0]
+        container_name = name_list[1]
+    elif len(name_list) == 1:
+        container_name = name_list[0]
+
+    return dut_name, container_name
+
+
+def verify_features_state(duthost):
+    """Checks whether the state of each feature is valid.
+
+    Args:
+      duthost: An Ansible object of DuT.
+
+    Returns:
+      If states of all features are valid, returns True; otherwise,
+      returns False.
+    """
+    feature_status, succeeded = duthost.get_feature_status()
+    if not succeeded:
+        logger.info("Failed to get list of feature names.")
+        return False
+
+    for feature_name, status in feature_status.items():
+        logger.info("The state of '{}' is '{}'.".format(feature_name, status))
+
+        if status not in ("enabled", "always_enabled", "disabled", "always_disabled"):
+            logger.info("The state of '{}' is invalid!".format(feature_name))
+            return False
+
+        logger.info("The state of '{}' is valid.".format(feature_name))
+
+    return True
+
+
+def verify_orchagent_running_or_assert(duthost):
+    """
+    Verifies that orchagent is running, asserts otherwise
+
+    Args: 
+        duthost: Device Under Test (DUT)
+    """
+   
+    def _orchagent_running():
+        cmds = 'docker exec swss supervisorctl status orchagent' 
+        output = duthost.shell(cmds, module_ignore_errors=True)
+        pytest_assert(not output['rc'], "Unable to check orchagent status output")
+        return 'RUNNING' in output['stdout']
+
+    pytest_assert(
+        wait_until(120, 10, 0, _orchagent_running),
+        "Orchagent is not running"
+    )

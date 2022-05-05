@@ -10,6 +10,11 @@ from tests.common.helpers.pfc_storm import PFCStorm
 from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
 from .files.pfcwd_helper import start_wd_on_ports
 from tests.ptf_runner import ptf_runner
+from tests.common import port_toggle
+from tests.common import constants
+
+
+PTF_PORT_MAPPING_MODE = 'use_orig_interface'
 
 TEMPLATES_DIR = os.path.join(os.path.dirname(os.path.realpath(__file__)), "templates")
 EXPECT_PFC_WD_DETECT_RE = ".* detected PFC storm .*"
@@ -19,6 +24,9 @@ WD_ACTION_MSG_PFX = { "dontcare": "Verify PFCWD detection when queue buffer is n
                       "forward": "Verify proper function of forward action"
                     }
 MMU_ACTIONS = ['change', 'noop', 'restore', 'noop']
+DB_SEPARATORS = {'0': ':', '4': '|'}
+BF_PROFILE = "BUFFER_PROFILE|{}"
+BF_PROFILE_TABLE = "BUFFER_PROFILE_TABLE:{}"
 
 pytestmark = [
     pytest.mark.disable_loganalyzer,
@@ -26,6 +34,7 @@ pytestmark = [
 ]
 
 logger = logging.getLogger(__name__)
+
 
 @pytest.fixture(scope='function', autouse=True)
 def stop_pfcwd(duthosts, rand_one_dut_hostname):
@@ -39,7 +48,31 @@ def stop_pfcwd(duthosts, rand_one_dut_hostname):
     logger.info("--- Stop Pfcwd --")
     duthost.command("pfcwd stop")
 
+
 class PfcCmd(object):
+    buffer_model_initialized = False
+    buffer_model = None
+
+    @staticmethod
+    def isBufferInApplDb(asic):
+        if not PfcCmd.buffer_model_initialized:
+            result = asic.run_redis_cmd(
+                argv=[
+                    "redis-cli", "-n", "4", "hget",
+                    "DEVICE_METADATA|localhost", "buffer_model"
+                ]
+            )
+            if result:
+                PfcCmd.buffer_model = result[0]
+            PfcCmd.buffer_model_initialized = True
+            logger.info(
+                "Buffer model is {}, buffer tables will be fetched from {}".format(
+                    PfcCmd.buffer_model or "not defined",
+                    "APPL_DB" if PfcCmd.buffer_model == "dynamic" else "CONFIG_DB"
+                )
+            )
+        return PfcCmd.buffer_model == "dynamic"
+
     @staticmethod
     def counter_cmd(dut, queue_oid, attr):
         """
@@ -93,9 +126,16 @@ class PfcCmd(object):
         """
         logger.info("Updating dynamic threshold for {} to {}".format(profile, value))
         asic = dut.get_port_asic_instance(port)
+
+        if PfcCmd.isBufferInApplDb(asic):
+            db = "0"
+        else:
+            db = "4"
+        table_template = BF_PROFILE if db == "4" else BF_PROFILE_TABLE
+
         asic.run_redis_cmd(
             argv = [
-                "redis-cli", "-n", "4", "HSET", "profile", "dynamic_th", value
+                "redis-cli", "-n", db, "HSET", table_template.format(profile), "dynamic_th", value
             ]
         )
 
@@ -114,20 +154,32 @@ class PfcCmd(object):
         logger.info("Retreiving pg profile and dynamic threshold for port: {}".format(port))
 
         asic = dut.get_port_asic_instance(port)
+        if PfcCmd.isBufferInApplDb(asic):
+            db = "0"
+            pg_pattern = "BUFFER_PG_TABLE:{}:3-4"
+        else:
+            db = "4"
+            pg_pattern = "BUFFER_PG|{}|3-4"
+
         pg_profile = asic.run_redis_cmd(
             argv = [
-                "redis-cli", "-n", "4", "HGET", 
-                "BUFFER_PG|{}|3-4".format(port), "profile"
+                "redis-cli", "-n", db, "HGET",
+                pg_pattern.format(port), "profile"
             ]
-        )[0].encode("utf-8")[1:-1]
+        )[0].encode("utf-8")
+
+        if BF_PROFILE[:-2] in pg_profile or BF_PROFILE_TABLE[:-2] in pg_profile:
+            pg_profile = pg_profile.split(DB_SEPARATORS[db])[-1][:-1]
+        table_template = BF_PROFILE if db == "4" else BF_PROFILE_TABLE
 
         alpha = asic.run_redis_cmd(
             argv = [
-                "redis-cli", "-n", "4", "HGET", pg_profile, "dynamic_th"
+                "redis-cli", "-n", db, "HGET", table_template.format(pg_profile), "dynamic_th"
             ]
         )[0].encode("utf-8")
 
         return pg_profile, alpha
+
 
 class PfcPktCntrs(object):
     """ PFCwd counter retrieval and verifications  """
@@ -253,6 +305,8 @@ class SetupPfcwdFunc(object):
             self.pfc_wd['test_port_ids'] = self.ports[port]['test_portchannel_members']
         elif self.pfc_wd['port_type'] in ["vlan", "interface"]:
             self.pfc_wd['test_port_ids'] = self.pfc_wd['test_port_id']
+        self.pfc_wd['test_port_vlan_id'] = self.ports[port].get('test_port_vlan_id')
+        self.pfc_wd['rx_port_vlan_id'] = self.ports[port].get('rx_port_vlan_id')
         self.queue_oid = self.dut.get_queue_oid(port, self.pfc_wd['queue_index'])
 
     def update_queue(self, port):
@@ -309,8 +363,10 @@ class SetupPfcwdFunc(object):
         """
         if self.pfc_wd['port_type'] == "vlan":
             self.ptf.script("./scripts/remove_ip.sh")
-            self.ptf.command("ifconfig eth{} {}".format(self.pfc_wd['test_port_id'],
-                                                        self.pfc_wd['test_neighbor_addr']))
+            ptf_port = 'eth%s' % self.pfc_wd['test_port_id']
+            if self.pfc_wd['test_port_vlan_id'] is not None:
+                ptf_port += (constants.VLAN_SUB_INTERFACE_SEPARATOR + self.pfc_wd['test_port_vlan_id'])
+            self.ptf.command("ifconfig {} {}".format(ptf_port, self.pfc_wd['test_neighbor_addr']))
             self.ptf.command("ping {} -c 10".format(vlan['addr']))
             self.dut.command("docker exec -i swss arping {} -c 5".format(self.pfc_wd['test_neighbor_addr']))
 
@@ -369,6 +425,8 @@ class SendVerifyTraffic():
         self.pfc_wd_test_port_ids = pfc_params['test_port_ids']
         self.pfc_wd_test_neighbor_addr = pfc_params['test_neighbor_addr']
         self.pfc_wd_rx_neighbor_addr = pfc_params['rx_neighbor_addr']
+        self.pfc_wd_test_port_vlan_id = pfc_params['test_port_vlan_id']
+        self.pfc_wd_rx_port_vlan_id = pfc_params['rx_port_vlan_id']
         self.port_type = pfc_params['port_type']
 
     def verify_tx_egress(self, action):
@@ -391,6 +449,10 @@ class SendVerifyTraffic():
                       'ip_dst': self.pfc_wd_test_neighbor_addr,
                       'port_type': self.port_type,
                       'wd_action': action}
+        if self.pfc_wd_rx_port_vlan_id is not None:
+            ptf_params['port_src_vlan_id'] = self.pfc_wd_rx_port_vlan_id
+        if self.pfc_wd_test_port_vlan_id is not None:
+            ptf_params['port_dst_vlan_id'] = self.pfc_wd_test_port_vlan_id
         log_format = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
         log_file = "/tmp/pfc_wd.PfcWdTest.{}.log".format(log_format)
         ptf_runner(self.ptf, "ptftests", "pfc_wd.PfcWdTest", "ptftests", params=ptf_params,
@@ -417,6 +479,10 @@ class SendVerifyTraffic():
                       'ip_dst': self.pfc_wd_rx_neighbor_addr,
                       'port_type': self.port_type,
                       'wd_action': action}
+        if self.pfc_wd_rx_port_vlan_id is not None:
+            ptf_params['port_dst_vlan_id'] = self.pfc_wd_rx_port_vlan_id
+        if self.pfc_wd_test_port_vlan_id is not None:
+            ptf_params['port_src_vlan_id'] = self.pfc_wd_test_port_vlan_id
         log_format = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
         log_file = "/tmp/pfc_wd.PfcWdTest.{}.log".format(log_format)
         ptf_runner(self.ptf, "ptftests", "pfc_wd.PfcWdTest", "ptftests", params=ptf_params,
@@ -445,6 +511,10 @@ class SendVerifyTraffic():
                       'ip_dst': self.pfc_wd_test_neighbor_addr,
                       'port_type': self.port_type,
                       'wd_action': 'forward'}
+        if self.pfc_wd_rx_port_vlan_id is not None:
+            ptf_params['port_src_vlan_id'] = self.pfc_wd_rx_port_vlan_id
+        if self.pfc_wd_test_port_vlan_id is not None:
+            ptf_params['port_dst_vlan_id'] = self.pfc_wd_test_port_vlan_id
         log_format = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
         log_file = "/tmp/pfc_wd.PfcWdTest.{}.log".format(log_format)
         ptf_runner(self.ptf, "ptftests", "pfc_wd.PfcWdTest", "ptftests", params=ptf_params,
@@ -473,6 +543,10 @@ class SendVerifyTraffic():
                       'ip_dst': self.pfc_wd_rx_neighbor_addr,
                       'port_type': self.port_type,
                       'wd_action': 'forward'}
+        if self.pfc_wd_rx_port_vlan_id is not None:
+            ptf_params['port_dst_vlan_id'] = self.pfc_wd_rx_port_vlan_id
+        if self.pfc_wd_test_port_vlan_id is not None:
+            ptf_params['port_src_vlan_id'] = self.pfc_wd_test_port_vlan_id
         log_format = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
         log_file = "/tmp/pfc_wd.PfcWdTest.{}.log".format(log_format)
         ptf_runner(self.ptf, "ptftests", "pfc_wd.PfcWdTest", "ptftests", params=ptf_params,
@@ -491,6 +565,10 @@ class SendVerifyTraffic():
                       'ip_dst': self.pfc_wd_test_neighbor_addr,
                       'port_type': self.port_type,
                       'wd_action': 'dontcare'}
+        if self.pfc_wd_rx_port_vlan_id is not None:
+            ptf_params['port_src_vlan_id'] = self.pfc_wd_rx_port_vlan_id
+        if self.pfc_wd_test_port_vlan_id is not None:
+            ptf_params['port_dst_vlan_id'] = self.pfc_wd_test_port_vlan_id
         log_format = datetime.datetime.now().strftime("%Y-%m-%d-%H:%M:%S")
         log_file = "/tmp/pfc_wd.PfcWdTest.{}.log".format(log_format)
         ptf_runner(self.ptf, "ptftests", "pfc_wd.PfcWdTest", "ptftests", params=ptf_params,
@@ -644,7 +722,10 @@ class TestPfcwdFunc(SetupPfcwdFunc):
              pfc_wd_restore_time_large = request.config.getoption("--restore-time")
              # wait time before we check the logs for the 'restore' signature. 'pfc_wd_restore_time_large' is in ms.
              self.timers['pfc_wd_wait_for_restore_time'] = int(pfc_wd_restore_time_large / 1000 * 2)
-             for action in ['dontcare', 'drop', 'forward']:
+             actions = ['dontcare', 'drop', 'forward']
+             if duthost.sonichost._facts['asic_type']=="cisco-8000":
+                 actions = ['dontcare', 'drop']
+             for action in actions:
                  try:
                      self.stats = PfcPktCntrs(self.dut, action)
                      logger.info("{} on port {}".format(WD_ACTION_MSG_PFX[action], port))
@@ -729,3 +810,88 @@ class TestPfcwdFunc(SetupPfcwdFunc):
             PfcCmd.update_alpha(self.dut, port, self.pg_profile, self.alpha)
             logger.info("--- Stop PFC WD ---")
             self.dut.command("pfcwd stop")
+
+    def test_pfcwd_port_toggle(self, request, fake_storm, setup_pfc_test, fanout_graph_facts, tbinfo, ptfhost, duthosts, rand_one_dut_hostname, fanouthosts):
+        """
+        Test PfCWD functionality after toggling port
+
+        Test verifies the following:
+            1. Select the port and lossless queue
+            2. Start PFCWD on selected test port
+            3. Start PFC storm on selected test port and lossless queue
+            4. Verify that PFC storm is detected
+            5. Stop PFC storm on selected test port and lossless queue
+            6. Verify that PFC storm is restored
+            7. Toggle test port (put administrativelly down and then up)
+            8. Verify that PFC storm is not detected
+
+        Args:
+            request(object) : pytest request object
+            fake_storm(fixture) : Module scoped fixture for enable/disable fake storm
+            setup_pfc_test(fixture) : Module scoped autouse fixture for PFCWD
+            fanout_graph_facts(fixture) : Fanout graph info
+            tbinfo(fixture) : Testbed info
+            ptfhost(AnsibleHost) : PTF host instance
+            duthost(AnsibleHost) : DUT instance
+            fanouthosts(AnsibleHost): Fanout instance
+        """
+        duthost = duthosts[rand_one_dut_hostname]
+        setup_info = setup_pfc_test
+        self.fanout_info = fanout_graph_facts
+        self.ptf = ptfhost
+        self.dut = duthost
+        self.fanout = fanouthosts
+        self.timers = setup_info['pfc_timers']
+        self.ports = setup_info['selected_test_ports']
+        self.neighbors = setup_info['neighbors']
+        dut_facts = self.dut.facts
+        self.peer_dev_list = dict()
+        self.fake_storm = fake_storm
+        self.storm_hndle = None
+        action = "dontcare"
+
+        for idx, port in enumerate(self.ports):
+             logger.info("")
+             logger.info("--- Testing port toggling with PFCWD enabled on {} ---".format(port))
+             self.setup_test_params(port, setup_info['vlan'], init=not idx)
+             self.traffic_inst = SendVerifyTraffic(self.ptf, dut_facts['router_mac'], self.pfc_wd)
+             pfc_wd_restore_time_large = request.config.getoption("--restore-time")
+             # wait time before we check the logs for the 'restore' signature. 'pfc_wd_restore_time_large' is in ms.
+             self.timers['pfc_wd_wait_for_restore_time'] = int(pfc_wd_restore_time_large / 1000 * 2)
+
+             try:
+                 # Verify that PFC storm is detected and restored
+                 self.stats = PfcPktCntrs(self.dut, action)
+                 logger.info("{} on port {}".format(WD_ACTION_MSG_PFX[action], port))
+                 self.run_test(self.dut, port, action)
+
+                 # Toggle test port and verify that PFC storm is not detected
+                 loganalyzer = LogAnalyzer(ansible_host=self.dut, marker_prefix="pfc_function_storm_detect_{}_port_{}".format(action, port))
+                 marker = loganalyzer.init()
+                 ignore_file = os.path.join(TEMPLATES_DIR, "ignore_pfc_wd_messages")
+                 reg_exp = loganalyzer.parse_regexp_file(src=ignore_file)
+                 loganalyzer.ignore_regex.extend(reg_exp)
+                 loganalyzer.expect_regex = []
+                 loganalyzer.expect_regex.extend([EXPECT_PFC_WD_DETECT_RE])
+                 loganalyzer.match_regex = []
+
+                 port_toggle(self.dut, tbinfo, ports=[port])
+
+                 logger.info("Verify that PFC storm is not detected on port {}".format(port))
+                 result = loganalyzer.analyze(marker, fail=False)
+                 if result["total"]["expected_missing_match"] == 0:
+                     pytest.fail(result)
+
+             except Exception as e:
+                 pytest.fail(str(e))
+
+             finally:
+                 if self.storm_hndle:
+                     logger.info("--- Stop PFC storm on port {}".format(port))
+                     self.storm_hndle.stop_storm()
+                 else:
+                     logger.info("--- Disabling fake storm on port {} queue {}".format(port, self.queue_oid))
+                     PfcCmd.set_storm_status(self.dut, self.queue_oid, "disabled")
+                 logger.info("--- Stop PFCWD ---")
+                 self.dut.command("pfcwd stop")
+

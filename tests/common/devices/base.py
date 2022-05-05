@@ -83,9 +83,16 @@ class AnsibleHostBase(object):
         else:
             logging.debug("{}::{}#{}: [{}] AnsibleModule::{} done, is_failed={}, rc={}"\
                 .format(filename, function_name, line_number, self.hostname, self.module_name, \
-                        res.get('is_failed', None), res.get('rc', None)))
+                        res.is_failed, res.get('rc', None)))
 
         if (res.is_failed or 'exception' in res) and not module_ignore_errors:
             raise RunAnsibleModuleFail("run module {} failed".format(self.module_name), res)
 
         return res
+
+class NeighborDevice(dict):
+    def __str__(self):
+        return str(self["host"])
+
+    def __repr__(self):
+        return self.__str__()

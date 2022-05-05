@@ -10,14 +10,16 @@ import time
 from collections import defaultdict
 from datetime import datetime
 
-from ansible import constants
+from ansible import constants as ansible_constants
 from ansible.plugins.loader import connection_loader
 
 from tests.common.devices.base import AnsibleHostBase
 from tests.common.helpers.dut_utils import is_supervisor_node
 from tests.common.cache import cached
 from tests.common.helpers.constants import DEFAULT_ASIC_ID, DEFAULT_NAMESPACE
+from tests.common.helpers.platform_api.chassis import is_inband_port
 from tests.common.errors import RunAnsibleModuleFail
+from tests.common import constants
 
 logger = logging.getLogger(__name__)
 
@@ -29,10 +31,12 @@ class SonicHost(AnsibleHostBase):
     This type of host contains information about the SONiC device (device info, services, etc.),
     and also provides the ability to run Ansible modules on the SONiC device.
     """
+    DEFAULT_ASIC_SERVICES =  ["bgp", "database", "lldp", "swss", "syncd", "teamd"]
 
 
     def __init__(self, ansible_adhoc, hostname,
-                 shell_user=None, shell_passwd=None):
+                 shell_user=None, shell_passwd=None,
+                 ssh_user=None, ssh_passwd=None):
         AnsibleHostBase.__init__(self, ansible_adhoc, hostname)
 
         if shell_user and shell_passwd:
@@ -45,10 +49,10 @@ class SonicHost(AnsibleHostBase):
             # parse connection options and reset those options with
             # passed credentials
             connection_loader.get(sonic_conn, class_only=True)
-            user_def = constants.config.get_configuration_definition(
+            user_def = ansible_constants.config.get_configuration_definition(
                 "remote_user", "connection", sonic_conn
                 )
-            pass_def = constants.config.get_configuration_definition(
+            pass_def = ansible_constants.config.get_configuration_definition(
                 "password", "connection", sonic_conn
                 )
             for user_var in (_['name'] for _ in user_def['vars']):
@@ -58,11 +62,24 @@ class SonicHost(AnsibleHostBase):
                 if pass_var in hostvars:
                     vm.extra_vars.update({pass_var: shell_passwd})
 
+        if ssh_user and ssh_passwd:
+            evars = {
+                'ansible_ssh_user': ssh_user,
+                'ansible_ssh_pass': ssh_passwd,
+            }
+            self.host.options['variable_manager'].extra_vars.update(evars)
+
         self._facts = self._gather_facts()
         self._os_version = self._get_os_version()
+        self._sonic_release = self._get_sonic_release()
         self.is_multi_asic = True if self.facts["num_asic"] > 1 else False
         self._kernel_version = self._get_kernel_version()
 
+    def __str__(self):
+        return '<SonicHost {}>'.format(self.hostname)
+
+    def __repr__(self):
+        return self.__str__()
 
     @property
     def facts(self):
@@ -94,6 +111,17 @@ class SonicHost(AnsibleHostBase):
         """
 
         return self._os_version
+
+    @property
+    def sonic_release(self):
+        """
+        The SONiC release running on this SONiC device.
+
+        Returns:
+            str: The SONiC release (e.g. "202012")
+        """
+
+        return self._sonic_release
 
     @property
     def kernel_version(self):
@@ -152,9 +180,34 @@ class SonicHost(AnsibleHostBase):
         facts["num_asic"] = self._get_asic_count(facts["platform"])
         facts["router_mac"] = self._get_router_mac()
         facts["modular_chassis"] = self._get_modular_chassis()
+        facts["mgmt_interface"] = self._get_mgmt_interface()
+
+        platform_asic = self._get_platform_asic(facts["platform"])
+        if platform_asic:
+            facts["platform_asic"] = platform_asic
 
         logging.debug("Gathered SonicHost facts: %s" % json.dumps(facts))
         return facts
+
+    def _get_mgmt_interface(self):
+        """
+        Gets the IPs of management interface
+        Output example
+
+            admin@ARISTA04T1:~$ show management_interface address
+            Management IP address = 10.250.0.54/24
+            Management Network Default Gateway = 10.250.0.1
+            Management IP address = 10.250.0.59/24
+            Management Network Default Gateway = 10.250.0.1
+
+        """
+        show_cmd_output = self.shell("show management_interface address", module_ignore_errors=True)
+        mgmt_addrs = []
+        for line in show_cmd_output["stdout_lines"]:
+            addr = re.match(r"Management IP address = (\d{0,3}\.\d{0,3}\.\d{0,3}\.\d{0,3})\/\d+", line)
+            if addr:
+                mgmt_addrs.append(addr.group(1))
+        return mgmt_addrs
 
     def _get_modular_chassis(self):
         py_res = self.shell("python -c \"import sonic_platform\"", module_ignore_errors=True)
@@ -168,8 +221,6 @@ class SonicHost(AnsibleHostBase):
                 module_ignore_errors=True)
         res = "False" if out["failed"] else out["stdout"]
         return res
-
-
 
     def _get_asic_count(self, platform):
         """
@@ -194,8 +245,8 @@ class SonicHost(AnsibleHostBase):
             return int(num_asic)
 
     def _get_router_mac(self):
-        return self.command("sonic-cfggen -d -v 'DEVICE_METADATA.localhost.mac'")["stdout_lines"][0].decode("utf-8")
-
+        return self.command("sonic-cfggen -d -v 'DEVICE_METADATA.localhost.mac'")["stdout_lines"][0].encode().decode(
+            "utf-8").lower()
 
     def _get_platform_info(self):
         """
@@ -218,7 +269,7 @@ class SonicHost(AnsibleHostBase):
             try:
                 out = self.command("cat {}".format(platform_file_path))
                 platform_info = json.loads(out["stdout"])
-                for key, value in platform_info.iteritems():
+                for key, value in platform_info.items():
                     result[key] = value
 
             except Exception:
@@ -235,6 +286,21 @@ class SonicHost(AnsibleHostBase):
         """
 
         output = self.command("sonic-cfggen -y /etc/sonic/sonic_version.yml -v build_version")
+        return output["stdout_lines"][0].strip()
+
+    def _get_sonic_release(self):
+        """
+        Gets the SONiC Release that is running on this device.
+        E.g. 202106, 202012, ...
+             if the release is master, then return none
+        """
+
+        output = self.command("sonic-cfggen -y /etc/sonic/sonic_version.yml -v release")
+        if len(output['stdout_lines']) == 0:
+            # get release from OS version
+            if self.os_version:
+                return self.os_version.split('.')[0][0:6]
+            return 'none'
         return output["stdout_lines"][0].strip()
 
     def _get_kernel_version(self):
@@ -329,10 +395,22 @@ class SonicHost(AnsibleHostBase):
         return len(status["stdout_lines"]) > 1
 
     def critical_services_status(self):
-        result = {}
+        # Initialize service status
+        services = {}
         for service in self.critical_services:
-            result[service] = self.is_service_fully_started(service)
-        return result
+            services[service] = False
+
+        # Check and update service status
+        try:
+            results = self.command("docker ps --filter status=running --format \{\{.Names\}\}")['stdout_lines']
+            for service in self.critical_services:
+                if service in results:
+                    services[service] = True
+        except Exception as e:
+            logging.info("Critical service status: {}".format(json.dumps(services)))
+            logging.info("Get critical service status failed with error {}".format(repr(e)))
+
+        return services
 
     def critical_services_fully_started(self):
         """
@@ -427,6 +505,48 @@ class SonicHost(AnsibleHostBase):
 
         return critical_group_list, critical_process_list, succeeded
 
+    def critical_group_process(self):
+        # Get critical group and process definitions by running cmds in batch to save overhead
+        cmds = []
+        for service in self.critical_services:
+            cmd = "docker exec {} bash -c '[ -f /etc/supervisor/critical_processes ]" \
+                  " && cat /etc/supervisor/critical_processes'".format(service)
+
+            cmds.append(cmd)
+        results = self.shell_cmds(cmds=cmds, continue_on_fail=True, module_ignore_errors=True)['results']
+
+        # Extract service name of each command result, transform results list to a dict keyed by service name
+        service_results = {}
+        for res in results:
+            service = res['cmd'].split()[2]
+            service_results[service] = res
+
+        # Parse critical group and service definition of all services
+        group_process_results = {}
+        for service in self.critical_services:
+            if service not in service_results or service_results[service]['rc'] != 0:
+                continue
+
+            service_group_process = {'groups': [], 'processes': []}
+
+            file_content = service_results[service]['stdout_lines']
+            for line in file_content:
+                line_info = line.strip().split(':')
+                if len(line_info) != 2:
+                    if '201811' in self._os_version and len(line_info) == 1:
+                        process_name = line_info[0].strip()
+                        service_group_process['processes'].append(process_name)
+                else:
+                    group_or_process = line_info[0].strip()
+                    group_process_name = line_info[1].strip()
+                    if group_or_process == 'group' and group_process_name:
+                        service_group_process['groups'].append(group_process_name)
+                    elif group_or_process == 'program' and group_process_name:
+                        service_group_process['processes'].append(group_process_name)
+            group_process_results[service] = service_group_process
+
+        return group_process_results
+
     def critical_process_status(self, service):
         """
         @summary: Check whether critical process status of a service.
@@ -471,10 +591,50 @@ class SonicHost(AnsibleHostBase):
         """
         @summary: Check whether all critical processes status for all critical services
         """
-        result = {}
+        # Get critical process definition of all services
+        group_process_results = self.critical_group_process()
+
+        # Get process status of all services. Run cmds in batch to save overhead
+        cmds = []
         for service in self.critical_services:
-            result[service] = self.critical_process_status(service)
-        return result
+            cmd = 'docker exec {} supervisorctl status'.format(service)
+            cmds.append(cmd)
+        results = self.shell_cmds(cmds=cmds, continue_on_fail=True, module_ignore_errors=True)['results']
+
+        # Extract service name of each command result, transform results list to a dict keyed by service name
+        service_results = {}
+        for res in results:
+            service = res['cmd'].split()[2]
+            service_results[service] = res
+
+        # Parse critical process status of all services
+        all_critical_process = {}
+        for service in self.critical_services:
+            service_critical_process = {
+                'status': True,
+                'exited_critical_process': [],
+                'running_critical_process': []
+            }
+            if service not in group_process_results or service not in service_results:
+                service_critical_process['status'] = False
+                all_critical_process[service] = service_critical_process
+                continue
+
+            service_group_process = group_process_results[service]
+
+            service_result = service_results[service]
+            for line in service_result['stdout_lines']:
+                pname, status, _ = re.split('\s+', line, 2)
+                if status != 'RUNNING':
+                    if pname in service_group_process['groups'] or pname in service_group_process['processes']:
+                        service_critical_process['exited_critical_process'].append(pname)
+                        service_critical_process['status'] = False
+                else:
+                    if pname in service_group_process['groups'] or pname in service_group_process['processes']:
+                        service_critical_process['running_critical_process'].append(pname)
+            all_critical_process[service] = service_critical_process
+
+        return all_critical_process
 
     def get_crm_resources(self):
         """
@@ -506,6 +666,76 @@ class SonicHost(AnsibleHostBase):
 
         return result
 
+    def get_pmon_daemon_db_value(self, daemon_db_table_key, field):
+        """
+        @summary: get db value in state db to check the daemon expected status
+        """
+        ret_val = None
+        get_db_value_cmd = 'redis-cli -n 6 hget "{}" {}'.format(daemon_db_table_key, field)
+
+        cmd_output = self.shell(get_db_value_cmd, module_ignore_errors=True)
+        if cmd_output['rc'] == 0:
+            ret_val = cmd_output['stdout']
+
+        return ret_val
+
+    def start_pmon_daemon(self, daemon_name):
+        """
+        @summary: start daemon in pmon docker using supervisorctl start command.
+        """
+        pmon_daemon_start_cmd = "docker exec pmon supervisorctl start {}".format(daemon_name)
+
+        self.shell(pmon_daemon_start_cmd, module_ignore_errors=True)
+
+    def stop_pmon_daemon_service(self, daemon_name):
+        """
+        @summary: stop daemon in pmon docker using supervisorctl stop command.
+        """
+        pmon_daemon_stop_cmd = "docker exec pmon supervisorctl stop {}".format(daemon_name)
+
+        self.shell(pmon_daemon_stop_cmd, module_ignore_errors=True)
+
+    def get_pmon_daemon_status(self, daemon_name):
+        """
+        @summary: get daemon status in pmon docker using supervisorctl status command.
+
+        @return: daemon_status - "RUNNING"/"STOPPED"/"EXITED"
+                 daemon_pid - integer number
+        """
+        daemon_status = None
+        daemon_pid = -1
+
+        daemon_info = self.shell("docker exec pmon supervisorctl status {}".format(daemon_name), module_ignore_errors=True)["stdout"]
+        if daemon_info.find(daemon_name) != -1:
+            daemon_status = daemon_info.split()[1].strip()
+            if daemon_status == "RUNNING":
+                daemon_pid = int(daemon_info.split()[3].strip(','))
+
+        logging.info("Daemon '{}' in the '{}' state with pid {}".format(daemon_name, daemon_status, daemon_pid))
+
+        return daemon_status, daemon_pid
+
+    def kill_pmon_daemon_pid_w_sig(self, pid, sig_name):
+        """
+        @summary: stop daemon in pmon docker using kill with a sig.
+
+        @return: True if it is stopped or False if not
+        """
+        if pid != -1 :
+            daemon_kill_sig_cmd = "docker exec pmon bash -c 'kill {} {}'".format(sig_name, pid)
+            self.shell(daemon_kill_sig_cmd, module_ignore_errors=True)
+
+    def stop_pmon_daemon(self, daemon_name, sig_name=None, pid=-1):
+        """
+        @summary: stop daemon in pmon docker.
+
+        @return: True if it is stopped or False if not
+        """
+        if sig_name is None:
+            self.stop_pmon_daemon_service(daemon_name)
+        else:
+            self.kill_pmon_daemon_pid_w_sig(pid, sig_name)
+
     def get_pmon_daemon_states(self):
         """
         @summary: get state list of daemons from pmon docker.
@@ -515,7 +745,7 @@ class SonicHost(AnsibleHostBase):
         @return: dictionary of { service_name1 : state1, ... ... }
         """
         # some services are meant to have a short life span or not part of the daemons
-        exemptions = ['lm-sensors', 'start.sh', 'rsyslogd', 'start', 'dependent-startup']
+        exemptions = ['lm-sensors', 'start.sh', 'rsyslogd', 'start', 'dependent-startup', 'chassis_db_init']
 
         daemons = self.shell('docker exec pmon supervisorctl status', module_ignore_errors=True)['stdout_lines']
 
@@ -536,6 +766,9 @@ class SonicHost(AnsibleHostBase):
                 else:
                     logging.debug("Daemon %s is disabled" % key)
                     exemptions.append(key)
+
+            if self.sonic_release in ['201911']:
+                exemptions.append('platform_api_server')
         except:
             # if pmon_daemon_control.json not exist, then it's using default setting,
             # all the pmon daemons expected to be running after boot up.
@@ -633,7 +866,7 @@ class SonicHost(AnsibleHostBase):
         start_time = self.get_service_props("networking", props=["ExecMainStartTimestamp",])
         try:
             return self.get_now_time() - datetime.strptime(start_time["ExecMainStartTimestamp"],
-                                                           "%a %Y-%m-%d %H:%M:%S UTC")
+                                                           "%a %Y-%m-%d %H:%M:%S %Z")
         except Exception as e:
             logging.error("Exception raised while getting networking restart time: %s" % repr(e))
             return None
@@ -666,6 +899,7 @@ class SonicHost(AnsibleHostBase):
             Args:
                 ifname: the interface to shutdown
         """
+        logging.info("Shutting down {}".format(ifname))
         return self.command("sudo config interface shutdown {}".format(ifname))
 
     def shutdown_multiple(self, ifnames):
@@ -675,8 +909,16 @@ class SonicHost(AnsibleHostBase):
             Args:
                 ifnames (list): the interface names to shutdown
         """
-        intf_str = ','.join(ifnames)
-        return self.shutdown(intf_str)
+        image_info = self.get_image_info()
+        # 201811 image does not support multiple interfaces shutdown
+        # Change the batch shutdown call to individual call here
+        if "201811" in image_info.get("current"):
+            for ifname in ifnames:
+                self.shutdown(ifname)
+            return
+        else:
+            intf_str = ','.join(ifnames)
+            return self.shutdown(intf_str)
 
     def no_shutdown(self, ifname):
         """
@@ -685,6 +927,7 @@ class SonicHost(AnsibleHostBase):
             Args:
                 ifname: the interface to bring up
         """
+        logging.info("Starting up {}".format(ifname))
         return self.command("sudo config interface startup {}".format(ifname))
 
     def no_shutdown_multiple(self, ifnames):
@@ -694,12 +937,20 @@ class SonicHost(AnsibleHostBase):
             Args:
                 ifnames (list): the interface names to bring up
         """
-        intf_str = ','.join(ifnames)
-        return self.no_shutdown(intf_str)
+        image_info = self.get_image_info()
+        # 201811 image does not support multiple interfaces startup
+        # Change the batch startup call to individual call here
+        if "201811" in image_info.get("current"):
+            for ifname in ifnames:
+                self.no_shutdown(ifname)
+            return
+        else:
+            intf_str = ','.join(ifnames)
+            return self.no_shutdown(intf_str)
 
     def get_ip_route_info(self, dstip, ns=""):
         """
-        @summary: return route information for a destionation. The destination coulb an ip address or ip prefix.
+        @summary: return route information for a destionation. The destination could an ip address or ip prefix.
 
         @param dstip: destination. either ip_address or ip_network
 
@@ -724,6 +975,13 @@ raw data
         nexthop via 10.0.0.5  dev PortChannel0002 weight 1
         nexthop via 10.0.0.9  dev PortChannel0003 weight 1
         nexthop via 10.0.0.13  dev PortChannel0004 weight 1
+
+raw data (starting from Bullseye)
+192.168.8.0/25 nhid 296 proto bgp src 10.1.0.32 metric 20
+        nexthop via 10.0.0.57 dev PortChannel0001 weight 1
+        nexthop via 10.0.0.59 dev PortChannel0002 weight 1
+        nexthop via 10.0.0.61 dev PortChannel0003 weight 1
+        nexthop via 10.0.0.63 dev PortChannel0004 weight 1
 ----------------
 get_ip_route_info(ipaddress.ip_address(unicode("20c0:a818::")))
 returns {'set_src': IPv6Address(u'fc00:1::32'), 'nexthops': [(IPv6Address(u'fc00::1a'), u'PortChannel0004')]}
@@ -739,6 +997,13 @@ raw data
 20c0:a818::/64 via fc00::a dev PortChannel0002 proto 186 src fc00:1::32 metric 20  pref medium
 20c0:a818::/64 via fc00::12 dev PortChannel0003 proto 186 src fc00:1::32 metric 20  pref medium
 20c0:a818::/64 via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pref medium
+
+raw data (starting from Bullseye)
+20c0:a818::/64 nhid 224 proto bgp src fc00:1::32 metric 20 pref medium
+        nexthop via fc00::72 dev PortChannel0001 weight 1
+        nexthop via fc00::76 dev PortChannel0002 weight 1
+        nexthop via fc00::7a dev PortChannel0003 weight 1
+        nexthop via fc00::7e dev PortChannel0004 weight 1
 ----------------
 get_ip_route_info(ipaddress.ip_network(unicode("0.0.0.0/0")))
 returns {'set_src': IPv4Address(u'10.1.0.32'), 'nexthops': [(IPv4Address(u'10.0.0.1'), u'PortChannel0001'), (IPv4Address(u'10.0.0.5'), u'PortChannel0002'), (IPv4Address(u'10.0.0.9'), u'PortChannel0003'), (IPv4Address(u'10.0.0.13'), u'PortChannel0004')]}
@@ -749,6 +1014,13 @@ default proto 186 src 10.1.0.32 metric 20
         nexthop via 10.0.0.5  dev PortChannel0002 weight 1
         nexthop via 10.0.0.9  dev PortChannel0003 weight 1
         nexthop via 10.0.0.13  dev PortChannel0004 weight 1
+
+raw data (starting from Bullseye)
+default nhid 296 proto bgp src 10.1.0.32 metric 20
+        nexthop via 10.0.0.57 dev PortChannel0001 weight 1
+        nexthop via 10.0.0.59 dev PortChannel0002 weight 1
+        nexthop via 10.0.0.61 dev PortChannel0003 weight 1
+        nexthop via 10.0.0.63 dev PortChannel0004 weight 1
 ----------------
 get_ip_route_info(ipaddress.ip_network(unicode("::/0")))
 returns {'set_src': IPv6Address(u'fc00:1::32'), 'nexthops': [(IPv6Address(u'fc00::2'), u'PortChannel0001'), (IPv6Address(u'fc00::a'), u'PortChannel0002'), (IPv6Address(u'fc00::12'), u'PortChannel0003'), (IPv6Address(u'fc00::1a'), u'PortChannel0004')]}
@@ -758,6 +1030,13 @@ default via fc00::2 dev PortChannel0001 proto 186 src fc00:1::32 metric 20  pref
 default via fc00::a dev PortChannel0002 proto 186 src fc00:1::32 metric 20  pref medium
 default via fc00::12 dev PortChannel0003 proto 186 src fc00:1::32 metric 20  pref medium
 default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pref medium
+
+raw data (starting from Bullseye)
+default nhid 224 proto bgp src fc00:1::32 metric 20 pref medium
+        nexthop via fc00::72 dev PortChannel0001 weight 1
+        nexthop via fc00::76 dev PortChannel0002 weight 1
+        nexthop via fc00::7a dev PortChannel0003 weight 1
+        nexthop via fc00::7e dev PortChannel0004 weight 1
 ----------------
         """
 
@@ -777,10 +1056,13 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
             # parse set_src
             m = re.match(r"^(default|\S+) proto (zebra|bgp|186) src (\S+)", rt[0])
             m1 = re.match(r"^(default|\S+) via (\S+) dev (\S+) proto (zebra|bgp|186) src (\S+)", rt[0])
+            m2 = re.match(r"^(default|\S+) nhid (\d+) proto (zebra|bgp|186) src (\S+)", rt[0])
             if m:
                 rtinfo['set_src'] = ipaddress.ip_address(unicode(m.group(3)))
             elif m1:
                 rtinfo['set_src'] = ipaddress.ip_address(unicode(m1.group(5)))
+            elif m2:
+                rtinfo['set_src'] = ipaddress.ip_address(unicode(m2.group(4)))
 
             # parse nexthops
             for l in rt:
@@ -797,10 +1079,10 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
 
             m = re.match(".+\s+via\s+(\S+)\s+.*dev\s+(\S+)\s+.*src\s+(\S+)\s+", rt[0])
             if m:
-                nexthop_ip = ipaddress.ip_address(unicode(m.group(1)))
+                nexthop_ip = ipaddress.ip_address(m.group(1))
                 gw_if = m.group(2)
                 rtinfo['nexthops'].append((nexthop_ip, gw_if))
-                rtinfo['set_src'] = ipaddress.ip_address(unicode(m.group(3)))
+                rtinfo['set_src'] = ipaddress.ip_address(m.group(3))
         else:
             raise ValueError("Wrong type of dstip")
 
@@ -842,58 +1124,6 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
 
         return nbinfo[str(neighbor_ip)]
 
-    def get_bgp_statistic(self, stat):
-        """
-        Get the named bgp statistic
-
-        Args: stat - name of statistic
-
-        Returns: statistic value or None if not found
-
-        """
-        ret = None
-        bgp_facts = self.bgp_facts()['ansible_facts']
-        if stat in bgp_facts['bgp_statistics']:
-            ret = bgp_facts['bgp_statistics'][stat]
-        return ret
-
-    def check_bgp_statistic(self, stat, value):
-        val = self.get_bgp_statistic(stat)
-        return val == value
-
-    def get_bgp_neighbors(self):
-        """
-        Get a diction of BGP neighbor states
-
-        Args: None
-
-        Returns: dictionary { (neighbor_ip : info_dict)* }
-
-        """
-        bgp_facts = self.bgp_facts()['ansible_facts']
-        return bgp_facts['bgp_neighbors']
-
-    def check_bgp_session_state(self, neigh_ips, state="established"):
-        """
-        @summary: check if current bgp session equals to the target state
-
-        @param neigh_ips: bgp neighbor IPs
-        @param state: target state
-        """
-        neigh_ips = [ip.lower() for ip in neigh_ips]
-        neigh_ok = []
-        bgp_facts = self.bgp_facts()['ansible_facts']
-        logging.info("bgp_facts: {}".format(bgp_facts))
-        for k, v in bgp_facts['bgp_neighbors'].items():
-            if v['state'] == state:
-                if k.lower() in neigh_ips:
-                    neigh_ok.append(k)
-        logging.info("bgp neighbors that match the state: {}".format(neigh_ok))
-        if len(neigh_ips) == len(neigh_ok):
-            return True
-
-        return False
-
     def check_bgp_session_nsf(self, neighbor_ip):
         """
         @summary: check if bgp neighbor session enters NSF state or not
@@ -906,6 +1136,53 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
                 return True
         return False
 
+    def _parse_route_summary(self, output):
+        """
+        Sample command output:
+Route Source         Routes               FIB  (vrf default)
+kernel               34                   34
+connected            11                   11
+static               1                    0
+ebgp                 6404                 6404
+ibgp                 0                    0
+------
+Totals               6450                 6449
+
+        Sample parsing output:
+        {
+            'kernel' : { 'routes' : 34 , 'FIB' : 34 },
+            ... ...
+            'Totals' : { 'routes' : 6450, 'FIB' : 6449 }
+        }
+        """
+        ret = {}
+        for line in output:
+            tokens = line.split()
+            if len(tokens) > 1:
+                key = tokens[0]
+                if key in ret:
+                    val = ret[key]
+                else:
+                    val = {'routes': 0, 'FIB': 0}
+                if tokens[1].isdigit():
+                    val['routes'] += int(tokens[1])
+                    if len(tokens) > 2 and tokens[2].isdigit():
+                        val['FIB'] += int(tokens[2])
+                    ret[key] = val
+        return ret
+
+    def get_ip_route_summary(self):
+        """
+        @summary: issue "show ip[v6] route summary" and parse output into dicitionary.
+                  Going forward, this show command should use tabular output so that
+                  we can simply call show_and_parse() function.
+        """
+        ipv4_output = self.shell("show ip route sum")["stdout_lines"]
+        ipv4_summary = self._parse_route_summary(ipv4_output)
+        ipv6_output = self.shell("show ipv6 route sum")["stdout_lines"]
+        ipv6_summary = self._parse_route_summary(ipv6_output)
+        return ipv4_summary, ipv6_summary
+
     def get_dut_iface_mac(self, iface_name):
         """
         Gets the MAC address of specified interface.
@@ -913,11 +1190,26 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         Returns:
             str: The MAC address of the specified interface, or None if it is not found.
         """
-        for iface, iface_info in self.setup()['ansible_facts'].items():
-            if iface_name in iface:
-                return iface_info["macaddress"]
+        try:
+            mac = self.command('cat /sys/class/net/{}/address'.format(iface_name))['stdout']
+            return mac
+        except Exception as e:
+            logger.error('Failed to get MAC address for interface "{}", exception: {}'.format(iface_name, repr(e)))
+            return None
 
-        return None
+    def iface_macsec_ok(self, interface_name):
+        """
+        Check if macsec is functional on specified interface.
+
+        Returns: True or False
+        """
+        try:
+            cmd = 'sonic-db-cli STATE_DB HGET \"MACSEC_PORT_TABLE|{}\" state'.format(interface_name)
+            state = self.shell(cmd)['stdout'].strip()
+            return state == 'ok'
+        except Exception as e:
+            logger.error('Failed to get macsec status for interface "{}", exception: {}'.format(interface_name, repr(e)))
+            return False
 
     def get_container_autorestart_states(self):
         """
@@ -1017,6 +1309,10 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
             headers.append(header_line[left:right].strip().lower())
 
         for content_line in content_lines:
+            # When an empty line is encountered while parsing the tabulate content, it is highly possible that the
+            # tabulate content has been drained. The empty line and rest of the lines should not be parsed.
+            if len(content_line) == 0:
+                break
             item = {}
             for idx, (left, right) in enumerate(positions):
                 k = headers[idx]
@@ -1113,7 +1409,28 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         except (ValueError, KeyError):
             pass
 
+        # set 'backend' flag for mg_facts
+        # a 'backend' topology may has different name convention for some parameter
+        self.update_backend_flag(tbinfo, mg_facts)
+
         return mg_facts
+
+    def update_backend_flag(self, tbinfo, mg_facts):
+        mg_facts[constants.IS_BACKEND_TOPOLOGY_KEY] = self.assert_topo_is_backend(tbinfo)
+
+    # assert whether a topo is 'backend' type
+    def assert_topo_is_backend(self, tbinfo):
+        topo_key = constants.TOPO_KEY
+        name_key = constants.NAME_KEY
+        if topo_key in tbinfo.keys() and name_key in tbinfo[topo_key].keys():
+            topo_name = tbinfo[topo_key][name_key]
+            if constants.BACKEND_TOPOLOGY_IND in topo_name:
+                return True
+        return False
+
+    def run_sonic_db_cli_cmd(self, sonic_db_cmd):
+        cmd = "sonic-db-cli {}".format(sonic_db_cmd)
+        return self.command(cmd, verbose=False)
 
     def run_redis_cli_cmd(self, redis_cmd):
         cmd = "/usr/bin/redis-cli {}".format(redis_cmd)
@@ -1127,7 +1444,8 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
             asic = "th"
         elif "Broadcom Limited Device b971" in output:
             asic = "th2"
-        elif "Broadcom Limited Device b850" in output:
+        elif ("Broadcom Limited Device b850" in output or
+              "Broadcom Limited Broadcom BCM56850" in output):
             asic = "td2"
         elif "Broadcom Limited Device b870" in output:
             asic = "td3"
@@ -1136,6 +1454,20 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
 
         return asic
 
+    def _get_platform_asic(self, platform):
+        platform_asic = os.path.join(
+            "/usr/share/sonic/device", platform, "platform_asic"
+        )
+        output = self.shell(
+            "cat {}".format(platform_asic), module_ignore_errors=True
+        )
+        if output["rc"] == 0:
+            return output["stdout_lines"][0]
+        return None
+
+    def get_facts(self):
+        return self.facts
+
     def get_running_config_facts(self):
         return self.config_facts(host=self.hostname, source='running', verbose=False)['ansible_facts']
 
@@ -1143,7 +1475,7 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         '''
         Get any interfaces belonging to a VLAN
         '''
-        vlan_members_facts = self.get_running_config_facts()['VLAN_MEMBER']
+        vlan_members_facts = self.get_running_config_facts().get('VLAN_MEMBER', {})
         vlan_intfs = []
 
         for vlan in vlan_members_facts:
@@ -1151,6 +1483,42 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
                 vlan_intfs.append(intf)
 
         return vlan_intfs
+
+    def get_interfaces_status(self):
+        '''
+        Get intnerfaces status by running 'show interfaces status' on the DUT, and parse the result into a dict.
+
+        Example output:
+            {
+                "Ethernet0": {
+                    "oper": "down",
+                    "lanes": "25,26,27,28",
+                    "fec": "N/A",
+                    "asym pfc": "off",
+                    "admin": "down",
+                    "type": "N/A",
+                    "vlan": "routed",
+                    "mtu": "9100",
+                    "alias": "fortyGigE0/0",
+                    "interface": "Ethernet0",
+                    "speed": "40G"
+                },
+                "PortChannel101": {
+                    "oper": "up",
+                    "lanes": "N/A",
+                    "fec": "N/A",
+                    "asym pfc": "N/A",
+                    "admin": "up",
+                    "type": "N/A",
+                    "vlan": "routed",
+                    "mtu": "9100",
+                    "alias": "N/A",
+                    "interface": "PortChannel101",
+                    "speed": "40G"
+                }
+            }
+        '''
+        return {x.get('interface'): x for x in self.show_and_parse('show interfaces status')}
 
     def get_crm_facts(self):
         """Run various 'crm show' commands and parse their output to gather CRM facts
@@ -1269,11 +1637,31 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
 
         return crm_facts
 
+    def start_service(self, service_name, docker_name):
+        logging.debug("Starting {}".format(service_name))
+        if not self.is_service_fully_started(docker_name):
+            self.command("sudo systemctl start {}".format(service_name))
+            logging.debug("started {}".format(service_name))
+
     def stop_service(self, service_name, docker_name):
         logging.debug("Stopping {}".format(service_name))
         if self.is_service_fully_started(docker_name):
-            self.command("systemctl stop {}".format(service_name))
+            self.command("sudo systemctl stop {}".format(service_name))
         logging.debug("Stopped {}".format(service_name))
+
+    def restart_service(self, service_name, docker_name):
+        logging.debug("Restarting {}".format(service_name))
+        if self.is_service_fully_started(docker_name):
+            self.command("sudo systemctl restart {}".format(service_name))
+            logging.debug("Restarted {}".format(service_name))
+        else:
+            self.command("sudo systemctl start {}".format(service_name))
+            logging.debug("started {}".format(service_name))
+
+    def reset_service(self, service_name, docker_name):
+        logging.debug("Stopping {}".format(service_name))
+        self.command("sudo systemctl reset-failed {}".format(service_name))
+        logging.debug("Resetting {}".format(service_name))
 
     def delete_container(self, service):
         self.command(
@@ -1341,7 +1729,7 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         except RunAnsibleModuleFail:
             return
         for pid in pid_list:
-            self.shell("kill {}".format(pid))
+            self.shell("kill {}".format(pid), module_ignore_errors=True)
 
     def get_up_ip_ports(self):
         """
@@ -1356,6 +1744,87 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
             except KeyError:
                 pass
         return up_ip_ports
+
+    def get_supported_speeds(self, interface_name):
+        """Get supported speeds for a given interface
+
+        Args:
+            interface_name (str): Interface name
+
+        Returns:
+            list: A list of supported speed strings or None
+        """
+        cmd = 'sonic-db-cli STATE_DB HGET \"PORT_TABLE|{}\" \"{}\"'.format(interface_name, 'supported_speeds')
+        supported_speeds = self.shell(cmd)['stdout'].strip()
+        return None if not supported_speeds else supported_speeds.split(',')
+
+    def set_auto_negotiation_mode(self, interface_name, mode):
+        """Set auto negotiation mode for a given interface
+
+        Args:
+            interface_name (str): Interface name
+            mode (boolean): True to enable auto negotiation else disable
+
+        Returns:
+            boolean: False if the operation is not supported else True
+        """
+        cmd = 'config interface autoneg {} {}'.format(interface_name, 'enabled' if mode else 'disabled')
+        self.shell(cmd)
+        return True
+
+    def get_auto_negotiation_mode(self, interface_name):
+        """Get auto negotiation mode for a given interface
+
+        Args:
+            interface_name (str): Interface name
+
+        Returns:
+            boolean: True if auto negotiation mode is enabled else False. Return None if
+            the auto negotiation mode is unknown or unsupported.
+        """
+        cmd = 'sonic-db-cli APPL_DB HGET \"PORT_TABLE:{}\" \"{}\"'.format(interface_name, 'autoneg')
+        try:
+            mode = self.shell(cmd)['stdout'].strip()
+        except RunAnsibleModuleFail:
+            return None
+        if not mode:
+            return None
+        return True if mode == 'on' else False
+
+    def set_speed(self, interface_name, speed):
+        """Set interface speed according to the auto negotiation mode. When auto negotiation mode
+        is enabled, set the advertised speeds; otherwise, set the force speed.
+
+        Args:
+            interface_name (str): Interface name
+            speed (str): SONiC style interface speed. E.g, 1G=1000, 10G=10000, 100G=100000. If the speed
+            is None and auto negotiation mode is enabled, it sets the advertised speeds to all supported
+            speeds.
+
+        Returns:
+            boolean: True if success. Usually, the method return False only if the operation
+            is not supported or failed.
+        """
+        auto_neg_mode = self.get_auto_negotiation_mode(interface_name)
+        if not auto_neg_mode:
+            cmd = 'config interface speed {} {}'.format(interface_name, speed)
+        else:
+            cmd = 'config interface advertised-speeds {} {}'.format(interface_name, speed)
+        self.shell(cmd)
+        return True
+
+    def get_speed(self, interface_name):
+        """Get interface speed
+
+        Args:
+            interface_name (str): Interface name
+
+        Returns:
+            str: SONiC style interface speed value. E.g, 1G=1000, 10G=10000, 100G=100000.
+        """
+        cmd = 'sonic-db-cli APPL_DB HGET \"PORT_TABLE:{}\" \"{}\"'.format(interface_name, 'speed')
+        speed = self.shell(cmd)['stdout'].strip()
+        return speed
 
     def get_rsyslog_ipv4(self):
         if not self.is_multi_asic:
@@ -1382,23 +1851,29 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         except socket.error:
             raise Exception("Invalid IPv4 address {}".format(ipv4))
 
+        netns_arg = ""
+        if ns_arg is not DEFAULT_NAMESPACE:
+            netns_arg = "sudo ip netns exec {} ".format(ns_arg)
+
         try:
             self.shell("{}ping -q -c{} {} > /dev/null".format(
-                ns_arg, count, ipv4
+                netns_arg, count, ipv4
             ))
         except RunAnsibleModuleFail:
             return False
         return True
 
-    def is_backend_portchannel(self, port_channel):
-        mg_facts = self.minigraph_facts(host = self.hostname)['ansible_facts']
+    def is_backend_portchannel(self, port_channel, mg_facts):
         ports = mg_facts["minigraph_portchannels"].get(port_channel)
         # minigraph facts does not have backend portchannel IFs
         if ports is None:
             return True
         return False if "Ethernet-BP" not in ports["members"][0] else True
 
-    def active_ip_interfaces(self, ip_ifs, ns_arg=""):
+    def is_backend_port(self, port, mg_facts):
+        return True if "Ethernet-BP" in port else False
+
+    def active_ip_interfaces(self, ip_ifs, tbinfo, ns_arg=DEFAULT_NAMESPACE):
         """
         Return a dict of active IP (Ethernet or PortChannel) interfaces, with
         interface and peer IPv4 address.
@@ -1406,18 +1881,21 @@ default via fc00::1a dev PortChannel0004 proto 186 src fc00:1::32 metric 20  pre
         Returns:
             Dict of Interfaces and their IPv4 address
         """
+        mg_facts = self.get_extended_minigraph_facts(tbinfo, ns_arg)
         ip_ifaces = {}
         for k,v in ip_ifs.items():
-            if (k.startswith("Ethernet") or
+            if ((k.startswith("Ethernet") and not is_inband_port(k)) or
                (k.startswith("PortChannel") and not
-                self.is_backend_portchannel(k))
+                self.is_backend_portchannel(k, mg_facts))
             ):
+                # Ping for some time to get ARP Re-learnt.
+                # We might have to tune it further if needed.
                 if (v["admin"] == "up" and v["oper_state"] == "up" and
-                        self.ping_v4(v["peer_ipv4"], ns_arg=ns_arg)
-                    ):
+                   self.ping_v4(v["peer_ipv4"], count=3, ns_arg=ns_arg)):
                     ip_ifaces[k] = {
-                        "ipv4" : v["ipv4"],
-                        "peer_ipv4" : v["peer_ipv4"]
+                        "ipv4": v["ipv4"],
+                        "peer_ipv4": v["peer_ipv4"],
+                        "bgp_neighbor": v["bgp_neighbor"]
                     }
 
         return ip_ifaces

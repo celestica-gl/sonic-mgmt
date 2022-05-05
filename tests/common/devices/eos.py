@@ -1,11 +1,15 @@
 import ipaddress
 import json
 import logging
+import re
 
 from tests.common.devices.base import AnsibleHostBase
 
 logger = logging.getLogger(__name__)
 
+def _raise_err(msg):
+        logger.error(msg)
+        raise Exception(msg)
 
 class EosHost(AnsibleHostBase):
     """
@@ -59,6 +63,12 @@ class EosHost(AnsibleHostBase):
         self.host.options['variable_manager'].extra_vars.update(evars)
         return super(EosHost, self).__getattr__(module_name)
 
+    def __str__(self):
+        return '<EosHost {}>'.format(self.hostname)
+
+    def __repr__(self):
+        return self.__str__()
+
     def shutdown(self, interface_name):
         out = self.eos_config(
             lines=['shutdown'],
@@ -91,7 +101,10 @@ class EosHost(AnsibleHostBase):
             lines=['lacp rate %s' % mode],
             parents='interface %s' % interface_name)
 
-        if out['failed'] == True:
+        # FIXME: out['failed'] will be False even when a command is deprecated, so we have to check out['changed']
+        # However, if the lacp rate is already in expected state, out['changed'] will be False and treated as
+        # error.
+        if out['failed'] == True or out['changed'] == False:
             # new eos deprecate lacp rate and use lacp timer command
             out = self.eos_config(
                 lines=['lacp timer %s' % mode],
@@ -111,6 +124,24 @@ class EosHost(AnsibleHostBase):
 
     def start_bgpd(self):
         out = self.eos_config(lines=['no agent Rib shutdown'])
+        return out
+
+    def no_shutdown_bgp(self, asn):
+        out = self.eos_config(
+            lines=['no shut'],
+            parents=['router bgp {}'.format(asn)])
+        logging.info('No shut BGP [%s]' % asn)
+        return out
+
+    def no_shutdown_bgp_neighbors(self, asn, neighbors=[]):
+        if not neighbors:
+            return
+
+        out = self.eos_config(
+            lines=['no neighbor {} shutdown'.format(neighbor) for neighbor in neighbors],
+            parents=['router bgp {}'.format(asn)]
+        )
+        logging.info('No shut BGP neighbors: {}'.format(json.dumps(neighbors)))
         return out
 
     def check_bgp_session_state(self, neigh_ips, neigh_desc, state="established"):
@@ -134,23 +165,32 @@ class EosHost(AnsibleHostBase):
             commands=['show ipv6 bgp summary | json'])
         logging.info("ipv6 bgp summary: {}".format(out_v6))
 
-        for k, v in out_v4['stdout'][0]['vrfs']['default']['peers'].items():
-            if v['peerState'].lower() == state.lower():
-                if k in neigh_ips:
-                    neigh_ips_ok.append(k)
-                if 'description' in v:
-                    neigh_desc_available = True
-                    if v['description'] in neigh_desc:
-                        neigh_desc_ok.append(v['description'])
+        # when bgpd is inactive, the bgp summary output: [{u'vrfs': {}, u'warnings': [u'BGP inactive']}]
+        if 'BGP inactive' in out_v4['stdout'][0].get('warnings', '') and 'BGP inactive' in out_v6['stdout'][0].get('warnings', ''):
+            return False
 
-        for k, v in out_v6['stdout'][0]['vrfs']['default']['peers'].items():
-            if v['peerState'].lower() == state.lower():
-                if k.lower() in neigh_ips:
-                    neigh_ips_ok.append(k)
-                if 'description' in v:
-                    neigh_desc_available = True
-                    if v['description'] in neigh_desc:
-                        neigh_desc_ok.append(v['description'])
+        try:
+            for k, v in out_v4['stdout'][0]['vrfs']['default']['peers'].items():
+                if v['peerState'].lower() == state.lower():
+                    if k in neigh_ips:
+                        neigh_ips_ok.append(k)
+                    if 'description' in v:
+                        neigh_desc_available = True
+                        if v['description'] in neigh_desc:
+                            neigh_desc_ok.append(v['description'])
+
+            for k, v in out_v6['stdout'][0]['vrfs']['default']['peers'].items():
+                if v['peerState'].lower() == state.lower():
+                    if k.lower() in neigh_ips:
+                        neigh_ips_ok.append(k)
+                    if 'description' in v:
+                        neigh_desc_available = True
+                        if v['description'] in neigh_desc:
+                            neigh_desc_ok.append(v['description'])
+        except KeyError:
+            # ignore any KeyError due to unexpected BGP summary output
+            pass
+
         logging.info("neigh_ips_ok={} neigh_desc_available={} neigh_desc_ok={}"\
             .format(str(neigh_ips_ok), str(neigh_desc_available), str(neigh_desc_ok)))
         if neigh_desc_available:
@@ -177,3 +217,121 @@ class EosHost(AnsibleHostBase):
             'command': '{} {}'.format(cmd, prefix),
             'output': 'json'
         }])['stdout'][0]
+
+    def get_auto_negotiation_mode(self, interface_name):
+        output = self.eos_command(commands=[{
+            'command': 'show interfaces %s status' % interface_name,
+            'output': 'json'
+        }])
+        if self._has_cli_cmd_failed(output):
+            _raise_err('Failed to get auto neg state for {}: {}'.format(interface_name, output['msg']))
+        autoneg_enabled = output['stdout'][0]['interfaceStatuses'][interface_name]['autoNegotiateActive']
+        return autoneg_enabled
+
+    def _reset_port_speed(self, interface_name):
+        out = self.eos_config(
+                lines=['default speed'],
+                parents=['interface {}'.format(interface_name)])
+        logger.debug('Reset port speed for %s: %s' % (interface_name, out))
+        return not self._has_cli_cmd_failed(out)
+
+    def set_auto_negotiation_mode(self, interface_name, enabled):
+        if self.get_auto_negotiation_mode(interface_name) == enabled:
+            return True
+
+        if enabled:
+            speed_to_advertise = self.get_supported_speeds(interface_name)[-1]
+            speed_to_advertise = speed_to_advertise[:-3] + 'gfull'
+            out = self.eos_config(
+                lines=['speed auto %s' % speed_to_advertise],
+                parents=['interface {}'.format(interface_name)])
+            logger.debug('Set auto neg to {} for port {}: {}'.format(enabled, interface_name, out))
+            return not self._has_cli_cmd_failed(out)
+        return self._reset_port_speed(interface_name)
+
+
+    def get_speed(self, interface_name):
+        output = self.eos_command(commands=['show interfaces %s transceiver properties' % interface_name])
+        found_txt = re.search(r'Operational Speed: (\S+)', output['stdout'][0])
+        if found_txt is None:
+            _raise_err('Not able to extract interface %s speed from output: %s' % (interface_name, output['stdout']))
+
+        v = found_txt.groups()[0]
+        return v[:-1] + '000'
+
+    def _has_cli_cmd_failed(self, cmd_output_obj):
+        return 'failed' in cmd_output_obj and cmd_output_obj['failed']
+
+    def set_speed(self, interface_name, speed):
+
+        if not speed:
+            # other set_speed implementations advertise port speeds when speed=None
+            # but in EOS autoneg activation and speeds advertisement is done via a single CLI cmd
+            # so this branch left nop intentionally
+            return True
+
+        speed_mode = 'auto' if self.get_auto_negotiation_mode(interface_name) else 'forced'
+        speed = speed[:-3] + 'gfull'
+        out = self.host.eos_config(
+                lines=['speed {} {}'.format(speed_mode, speed)],
+                parents='interface %s' % interface_name)[self.hostname]
+        logger.debug('Set force speed for port {} : {}'.format(interface_name, out))
+        return not self._has_cli_cmd_failed(out)
+
+    def get_supported_speeds(self, interface_name):
+        """Get supported speeds for a given interface
+
+        Args:
+            interface_name (str): Interface name
+
+        Returns:
+            list: A list of supported speed strings or None
+        """
+        commands = ['show interfaces {} capabilities'.format(interface_name), 'show interface {} hardware'.format(interface_name)]
+        for command in commands:
+            output = self.eos_command(commands=[command])
+            found_txt = re.search("Speed/Duplex: (.+)", output['stdout'][0])
+            if found_txt is not None:
+                break
+
+        if found_txt is None:
+            _raise_err('Failed to find port speeds list in output: %s' % output['stdout'])
+
+        speed_list = found_txt.groups()[0]
+        speed_list = speed_list.split(',')
+        speed_list.remove('auto')
+        def extract_speed_only(v):
+            return re.match('\d+', v.strip()).group() + '000'
+        return list(map(extract_speed_only, speed_list))
+
+    def get_dut_iface_mac(self, interface_name):
+        """
+        Gets the MAC address of specified interface.
+
+        Returns:
+            str: The MAC address of the specified interface, or None if it is not found.
+        """
+        try:
+            command = 'show interfaces {} | json'.format(interface_name)
+            output = self.eos_command(commands=[command])['stdout'][0]
+            mac = output["interfaces"][interface_name]["physicalAddress"]
+            return mac
+        except Exception as e:
+            logger.error('Failed to get MAC address for interface "{}", exception: {}'.format(interface_name, repr(e)))
+            return None
+
+    def iface_macsec_ok(self, interface_name):
+        """
+        Check if macsec is functional on specified interface.
+
+        Returns: True or False
+        """
+        try:
+            command = 'show mac security interface {} | json'.format(interface_name)
+            output = self.eos_command(commands=[command])['stdout'][0]
+            if interface_name in output["interfaces"]:
+                return output["interfaces"][interface_name]["controlledPort"]
+            return False
+        except Exception as e:
+            logger.error('Failed to get macsec status for interface "{}", exception: {}'.format(interface_name, repr(e)))
+            return False

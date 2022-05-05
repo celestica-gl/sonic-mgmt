@@ -29,6 +29,8 @@ import os
 
 from collections import defaultdict
 from datetime import datetime
+from utilities import TestResultJSONValidationError
+from utilities import validate_json_file
 
 import defusedxml.ElementTree as ET
 
@@ -47,11 +49,13 @@ REQUIRED_TESTSUITE_ATTRIBUTES = {
     ("failures", int),
     ("errors", int)
 }
-
+EXTRA_XML_SUMMARY_ATTRIBUTES = {
+    ("xfails", int)
+}
 # Fields found in the metadata/properties section of the JUnit XML file.
 # FIXME: These are specific to pytest, needs to be extended to support spytest.
-METADATA_TAG = "properties"
-METADATA_PROPERTY_TAG = "property"
+PROPERTIES_TAG = "properties"
+PROPERTY_TAG = "property"
 REQUIRED_METADATA_PROPERTIES = [
     "topology",
     "testbed",
@@ -77,10 +81,6 @@ REQUIRED_TESTCASE_JSON_FIELDS = ["result", "error", "summary"]
 
 class JUnitXMLValidationError(Exception):
     """Expected errors that are thrown while validating the contents of the JUnit XML file."""
-
-
-class TestResultJSONValidationError(Exception):
-    """Expected errors that are trhown while validating the contents of the Test Result JSON file."""
 
 
 def validate_junit_xml_stream(stream):
@@ -240,13 +240,13 @@ def _validate_test_summary(root):
 
 
 def _validate_test_metadata(root):
-    properties_element = root.find("properties")
+    properties_element = root.find(PROPERTIES_TAG)
 
     if not properties_element:
         return
 
     seen_properties = []
-    for prop in properties_element.iterfind(METADATA_PROPERTY_TAG):
+    for prop in properties_element.iterfind(PROPERTY_TAG):
         property_name = prop.get("name", None)
 
         if not property_name:
@@ -322,24 +322,31 @@ def _extract_test_summary(test_cases):
     test_result_summary = defaultdict(int)
     for _, cases in test_cases.items():
         for case in cases:
+            # Error may occur along with other test results, to count error separately. 
+            # The result field is unique per test case, either error or failure.
+            # xfails is the counter for all kinds of xfail results (include success/failure/error/skipped)
             test_result_summary["tests"] += 1
             test_result_summary["failures"] += case["result"] == "failure" or case["result"] == "error"
             test_result_summary["skipped"] += case["result"] == "skipped"
             test_result_summary["errors"] += case["error"]
             test_result_summary["time"] += float(case["time"])
+            test_result_summary["xfails"] += case["result"] == "xfail_failure" or \
+                                             case["result"] == "xfail_error" or \
+                                             case["result"] == "xfail_skipped" or \
+                                             case["result"] == "xfail_success"
 
     test_result_summary = {k: str(v) for k, v in test_result_summary.items()}
     return test_result_summary
 
 
 def _parse_test_metadata(root):
-    properties_element = root.find(METADATA_TAG)
+    properties_element = root.find(PROPERTIES_TAG)
 
     if not properties_element:
         return {}
 
     test_result_metadata = {}
-    for prop in properties_element.iterfind("property"):
+    for prop in properties_element.iterfind(PROPERTY_TAG):
         if prop.get("value"):
             test_result_metadata[prop.get("name")] = prop.get("value")
 
@@ -364,23 +371,34 @@ def _parse_test_cases(root):
         error = test_case.find("error")
         skipped = test_case.find("skipped")
 
+        # Any test which marked as xfail will drop out a property to the report xml file.
+        # Add prefix "xfail_" to tests which are marked with xfail
+        properties_element = test_case.find(PROPERTIES_TAG)
+        xfail_case = ""
+        if properties_element:
+            for prop in properties_element.iterfind(PROPERTY_TAG):
+                if prop.get("name") == "xfail":
+                    xfail_case = "xfail_"
+                    break
+
         # NOTE: "error" is unique in that it can occur alongside a succesful, failed, or skipped test result.
         # Because of this, we track errors separately so that the error can be correlated with the stage it
         # occurred.
+        # By looking into test results from past 300 days, error only occur with skipped test result.
         #
         # If there is *only* an error tag we note that as well, as this indicates that the framework
         # errored out during setup or teardown.
         if failure is not None:
-            result["result"] = "failure"
+            result["result"] = "{}failure".format(xfail_case)
             summary = failure.get("message", "")
         elif skipped is not None:
-            result["result"] = "skipped"
+            result["result"] = "{}skipped".format(xfail_case)
             summary = skipped.get("message", "")
         elif error is not None:
-            result["result"] = "error"
+            result["result"] = "{}error".format(xfail_case)
             summary = error.get("message", "")
         else:
-            result["result"] = "success"
+            result["result"] = "{}success".format(xfail_case)
             summary = ""
 
         result["summary"] = summary[:min(len(summary), MAXIMUM_SUMMARY_SIZE)]
@@ -401,6 +419,9 @@ def _update_test_summary(current, update):
 
     new_summary = {}
     for attribute, attr_type in REQUIRED_TESTSUITE_ATTRIBUTES:
+        new_summary[attribute] = str(round(attr_type(current.get(attribute, 0)) + attr_type(update.get(attribute, 0)), 3))
+
+    for attribute, attr_type in EXTRA_XML_SUMMARY_ATTRIBUTES:
         new_summary[attribute] = str(round(attr_type(current.get(attribute, 0)) + attr_type(update.get(attribute, 0)), 3))
 
     return new_summary
@@ -458,19 +479,7 @@ def validate_junit_json_file(path):
             - The provided file is unparseable
             - The provided file is missing required fields
     """
-    if not os.path.exists(path):
-        print(f"{path} not found")
-        sys.exit(1)
-
-    if not os.path.isfile(path):
-        print(f"{path} is not a JSON file")
-        sys.exit(1)
-
-    try:
-        with open(path) as f:
-            test_result_json = json.load(f)
-    except Exception as e:
-        raise TestResultJSONValidationError(f"Could not load JSON file {path}: {e}") from e
+    test_result_json = validate_json_file(path)
 
     _validate_json_metadata(test_result_json)
     _validate_json_summary(test_result_json)

@@ -1,9 +1,14 @@
 import pytest
 import logging
 import ipaddr as ipaddress
-from bgp_helpers import parse_rib, verify_all_routes_announce_to_bgpmon 
+from bgp_helpers import parse_rib, get_routes_not_announced_to_bgpmon,remove_bgp_neighbors,restore_bgp_neighbors
+from tests.common.helpers.constants import DEFAULT_ASIC_ID
 from tests.common.helpers.assertions import pytest_assert
+from tests.common.utilities import wait_until
+from multiprocessing.dummy import Pool as ThreadPool
 import re
+
+from tests.common.platform.processes_utils import wait_critical_processes
 
 pytestmark = [
     pytest.mark.topology('t1')
@@ -14,22 +19,37 @@ logger = logging.getLogger(__name__)
 TS_NORMAL = "System Mode: Normal"
 TS_MAINTENANCE = "System Mode: Maintenance"
 TS_INCONSISTENT = "System Mode: Not consistent"
+TS_NO_NEIGHBORS = "System Mode: No external neighbors"
 
 @pytest.fixture
 def traffic_shift_community(duthost):
     community = duthost.shell('sonic-cfggen -y /etc/sonic/constants.yml -v constants.bgp.traffic_shift_community')['stdout']
     return community
 
+def verify_traffic_shift_per_asic(host, outputs, match_result, asic_index):
+    prefix = "BGP{} : ".format(asic_index) if asic_index != DEFAULT_ASIC_ID else ''
+    result_str = "{}{}".format(prefix, match_result)
+    if result_str in outputs:
+        return True
+    else:
+        return False
+
+def verify_traffic_shift(host, outputs, match_result):
+    for asic_index in host.get_frontend_asic_ids():
+        if not verify_traffic_shift_per_asic(host, outputs, match_result, asic_index):
+            return "ERROR"
+
+    return match_result
+
 def get_traffic_shift_state(host):
     outputs = host.shell('TSC')['stdout_lines']
-    for out in outputs:
-        if TS_NORMAL == out.strip():
-            return TS_NORMAL
-        if TS_MAINTENANCE == out.strip():
-            return TS_MAINTENANCE
-        if TS_INCONSISTENT == out.strip():
-            return TS_INCONSISTENT
-    pytest.fail("TSC return unexpected state {}".format(out))
+    if verify_traffic_shift(host, outputs, TS_NORMAL) is not "ERROR":
+        return TS_NORMAL
+    if verify_traffic_shift(host, outputs, TS_MAINTENANCE) is not "ERROR":
+        return TS_MAINTENANCE
+    if verify_traffic_shift(host, outputs, TS_INCONSISTENT) is not "ERROR":
+        return TS_INCONSISTENT
+    pytest.fail("TSC return unexpected state {}".format("ERROR"))
 
 def parse_routes_on_eos(dut_host, neigh_hosts, ip_ver):
     """
@@ -40,7 +60,16 @@ def parse_routes_on_eos(dut_host, neigh_hosts, ip_ver):
     all_routes = {}
     BGP_ENTRY_HEADING = r"BGP routing table entry for "
     BGP_COMMUNITY_HEADING = r"Community: "
-    for hostname, host_conf in neigh_hosts.items():
+    # Retrieve the routes on all VMs  in parallel by using a thread poll
+    neigh_host_items = neigh_hosts.items()
+    def parse_routes_process(neigh_host_item):
+        """
+        The process to parse routes on a VM.
+        :param neigh_host_item: tuple of hostname and host_conf dict
+        :return: no return value
+        """
+        hostname = neigh_host_item[0]
+        host_conf = neigh_host_item[1]
         host = host_conf['host']
         peer_ips = host_conf['conf']['bgp']['peers'][asn]
         for ip in peer_ips:
@@ -51,12 +80,18 @@ def parse_routes_on_eos(dut_host, neigh_hosts, ip_ver):
         # The json formatter on EOS consumes too much time (over 40 seconds).
         # So we have to parse the raw output instead json.
         if 4 == ip_ver:
-            cmd = "show ip bgp neighbors {} received-routes detail | grep -E \"{}|{}\"".format(peer_ip_v4, BGP_ENTRY_HEADING, BGP_COMMUNITY_HEADING)
+            cmd = "show ip bgp neighbors {} received-routes detail | grep -E \"{}|{}\"".format(peer_ip_v4,
+                                                                                               BGP_ENTRY_HEADING,
+                                                                                               BGP_COMMUNITY_HEADING)
             cmd_backup = ""
         else:
-            cmd = "show ipv6 bgp peers {} received-routes detail | grep -E \"{}|{}\"".format(peer_ip_v6, BGP_ENTRY_HEADING, BGP_COMMUNITY_HEADING)
+            cmd = "show ipv6 bgp peers {} received-routes detail | grep -E \"{}|{}\"".format(peer_ip_v6,
+                                                                                             BGP_ENTRY_HEADING,
+                                                                                             BGP_COMMUNITY_HEADING)
             # For compatibility on EOS of old version
-            cmd_backup = "show ipv6 bgp neighbors {} received-routes detail | grep -E \"{}|{}\"".format(peer_ip_v6, BGP_ENTRY_HEADING, BGP_COMMUNITY_HEADING)
+            cmd_backup = "show ipv6 bgp neighbors {} received-routes detail | grep -E \"{}|{}\"".format(peer_ip_v6,
+                                                                                                        BGP_ENTRY_HEADING,
+                                                                                                        BGP_COMMUNITY_HEADING)
         res = host.eos_command(commands=[cmd], module_ignore_errors=True)
         if res['failed'] and cmd_backup != "":
             res = host.eos_command(commands=[cmd_backup], module_ignore_errors=True)
@@ -79,6 +114,11 @@ def parse_routes_on_eos(dut_host, neigh_hosts, ip_ver):
         if entry:
             routes[entry] = community
         all_routes[hostname] = routes
+    pool = ThreadPool()
+    # Run the parse routes process on all VMs in parallel.
+    pool.map(parse_routes_process, neigh_host_items)
+    pool.close()
+    pool.join()
     return all_routes
 
 def verify_all_routes_announce_to_neighs(dut_host, neigh_hosts, routes_dut, ip_ver):
@@ -148,7 +188,7 @@ def test_TSA(duthost, ptfhost, nbrhosts, bgpmon_setup_teardown, traffic_shift_co
         # Verify DUT is in maintenance state.
         pytest_assert(TS_MAINTENANCE == get_traffic_shift_state(duthost),
                       "DUT is not in maintenance state")
-        pytest_assert(verify_all_routes_announce_to_bgpmon(duthost, ptfhost),
+        pytest_assert(get_routes_not_announced_to_bgpmon(duthost, ptfhost)==[],
                       "Not all routes are announced to bgpmon")
         pytest_assert(verify_only_loopback_routes_are_announced_to_neighs(duthost, nbrhosts, traffic_shift_community),
                       "Failed to verify routes on eos in TSA")
@@ -167,9 +207,61 @@ def test_TSB(duthost, ptfhost, nbrhosts, bgpmon_setup_teardown):
     # Verify DUT is in normal state.
     pytest_assert(TS_NORMAL == get_traffic_shift_state(duthost),
                   "DUT is not in normal state")
-    pytest_assert(verify_all_routes_announce_to_bgpmon(duthost, ptfhost),
+    pytest_assert(get_routes_not_announced_to_bgpmon(duthost, ptfhost)==[],
                   "Not all routes are announced to bgpmon")
     pytest_assert(verify_all_routes_announce_to_neighs(duthost, nbrhosts, parse_rib(duthost, 4), 4),
                   "Not all ipv4 routes are announced to neighbors")
     pytest_assert(verify_all_routes_announce_to_neighs(duthost, nbrhosts, parse_rib(duthost, 6), 6),
                   "Not all ipv6 routes are announced to neighbors")
+
+def test_TSA_B_C_with_no_neighbors(duthost, bgpmon_setup_teardown, nbrhosts, tbinfo):
+    """
+    Test TSA, TSB, TSC with no neighbors on ASIC0 in case of multi-asic and single-asic.
+    """
+    bgp_neighbors = {}
+    asic_index = 0 if duthost.is_multi_asic else DEFAULT_ASIC_ID
+
+
+    try:
+
+        routes_4 = parse_rib(duthost, 4)
+        routes_6 = parse_rib(duthost, 6)
+        # Remove the Neighbors for the particular BGP instance
+        bgp_neighbors = remove_bgp_neighbors(duthost, asic_index)
+
+        # Issue TSA on DUT
+        output = duthost.shell("TSA")['stdout_lines']
+
+        # Set the DUT in maintenance state
+        # Verify ASIC0 has no neighbors message.
+        pytest_assert(verify_traffic_shift_per_asic(duthost, output, TS_NO_NEIGHBORS, asic_index), "ASIC is not having no neighbors")
+
+        # Recover to Normal state
+        duthost.shell("TSB")['stdout_lines']
+
+        # Verify DUT is in Normal state, and ASIC0 has no neighbors message.
+        pytest_assert(verify_traffic_shift_per_asic(duthost, output, TS_NO_NEIGHBORS, asic_index), "ASIC is not having no neighbors")
+
+        # Check the traffic state
+        duthost.shell("TSC")['stdout_lines']
+
+        # Verify DUT is in Normal state, and ASIC0 has no neighbors message.
+        pytest_assert(verify_traffic_shift_per_asic(duthost, output, TS_NO_NEIGHBORS, asic_index), "ASIC is not having no neighbors")
+
+    finally:
+        # Restore BGP neighbors
+        restore_bgp_neighbors(duthost, asic_index, bgp_neighbors)
+
+        # Recover to Normal state
+        duthost.shell("TSB")
+        wait_critical_processes(duthost)
+
+        # Wait until bgp sessions are established on DUT
+        pytest_assert(wait_until(100, 10, 0, duthost.check_bgp_session_state, bgp_neighbors.keys()),
+                      "Not all BGP sessions are established on DUT")
+
+        # Wait until all routes are announced to neighbors
+        pytest_assert(wait_until(300, 3, 0, verify_all_routes_announce_to_neighs,duthost, nbrhosts, routes_4, 4),
+                      "Not all ipv4 routes are announced to neighbors")
+        pytest_assert(wait_until(300, 3, 0, verify_all_routes_announce_to_neighs,duthost, nbrhosts, routes_6, 6),
+                      "Not all ipv6 routes are announced to neighbors")

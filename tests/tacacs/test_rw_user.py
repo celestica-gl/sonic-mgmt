@@ -1,7 +1,7 @@
 import pytest
-import crypt
 
 from .test_ro_user import ssh_remote_run
+from .utils import check_output
 
 pytestmark = [
     pytest.mark.disable_loganalyzer,
@@ -10,26 +10,22 @@ pytestmark = [
 ]
 
 
-def test_rw_user(localhost, duthosts, rand_one_dut_hostname, creds, test_tacacs):
+def test_rw_user(localhost, duthosts, enum_rand_one_per_hwsku_hostname, tacacs_creds, check_tacacs):
     """test tacacs rw user
     """
-    duthost = duthosts[rand_one_dut_hostname]
-    dutip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
-    res = ssh_remote_run(localhost, dutip, creds['tacacs_rw_user'], creds['tacacs_rw_user_passwd'], "cat /etc/passwd")
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    dutip = duthost.mgmt_ip
+    res = ssh_remote_run(localhost, dutip, tacacs_creds['tacacs_rw_user'],
+                         tacacs_creds['tacacs_rw_user_passwd'], "cat /etc/passwd")
 
-    for l in res['stdout_lines']:
-        fds = l.split(':')
-        if fds[0] == "testadmin":
-            assert fds[4] == "remote_user_su"
+    check_output(res, 'testadmin', 'remote_user_su')
 
-def test_rw_user_ipv6(localhost, duthosts, rand_one_dut_hostname, creds, test_tacacs_v6):
+def test_rw_user_ipv6(localhost, duthosts, enum_rand_one_per_hwsku_hostname, tacacs_creds, check_tacacs_v6):
     """test tacacs rw user
     """
-    duthost = duthosts[rand_one_dut_hostname]
-    dutip = duthost.host.options['inventory_manager'].get_host(duthost.hostname).vars['ansible_host']
-    res = ssh_remote_run(localhost, dutip, creds['tacacs_rw_user'], creds['tacacs_rw_user_passwd'], "cat /etc/passwd")
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    dutip = duthost.mgmt_ip
+    res = ssh_remote_run(localhost, dutip, tacacs_creds['tacacs_rw_user'],
+                         tacacs_creds['tacacs_rw_user_passwd'], "cat /etc/passwd")
 
-    for l in res['stdout_lines']:
-        fds = l.split(':')
-        if fds[0] == "testadmin":
-            assert fds[4] == "remote_user_su"
+    check_output(res, 'testadmin', 'remote_user_su')

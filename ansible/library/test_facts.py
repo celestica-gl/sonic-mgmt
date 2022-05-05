@@ -1,5 +1,6 @@
 #!/usr/bin/env python
 import os
+import sys
 import traceback
 import ipaddr as ipaddress
 import csv
@@ -144,7 +145,10 @@ class ParseTestbedTopoinfo():
                         line['ptf_ipv6'], line['ptf_netmask_v6'] = \
                             _cidr_to_ip_mask(line["ptf_ipv6"])
 
-                    line['duts'] = line['dut'].translate(string.maketrans("", ""), "[] ").split(';')
+                    if sys.version_info < (3, 0):
+                        line['duts'] = line['dut'].translate(string.maketrans("", ""), "[] ").split(';')
+                    else:
+                        line['duts'] = line['dut'].translate(str.maketrans("", "", "[] ")).split(';')
                     line['duts_map'] = {dut: line['duts'].index(dut) for dut in line['duts']}
                     del line['dut']
 
@@ -189,7 +193,7 @@ class TestcasesTopology():
 
     def read_testcases(self):
         with open(self.testcase_filename) as f:
-            testcases = yaml.load(f)
+            testcases = yaml.safe_load(f)
             if 'testcases' not in testcases:
                 raise Exception("not correct testcases file format??")
             for tc,prop in testcases['testcases'].items():

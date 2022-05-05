@@ -2,12 +2,16 @@ import json
 import logging
 import os
 import pytest
+import random
 import time
 from pkg_resources import parse_version
+from tests.common import config_reload
 from tests.common.utilities import wait_until
 from tests.common.helpers.assertions import pytest_require
+from tests.common.plugins.loganalyzer.loganalyzer import LogAnalyzer
 from tests.platform_tests.thermal_control_test_helper import disable_thermal_policy
 from device_mocker import device_mocker_factory
+from tests.common.helpers.assertions import pytest_assert
 
 pytestmark = [
     pytest.mark.topology('any')
@@ -30,10 +34,11 @@ IGNORE_DEVICE_CHECK_CONFIG_FILE = 'ignore_device_check.json'
 EXTERNAL_CHECKER_MOCK_FILE = 'mock_valid_external_checker.txt'
 
 DEFAULT_BOOT_TIMEOUT = 300
-DEFAULT_INTERVAL = 60
+DEFAULT_INTERVAL = 62
 FAST_INTERVAL = 10
 THERMAL_CHECK_INTERVAL = 70
 PSU_CHECK_INTERVAL = FAST_INTERVAL + 5
+WAIT_TIMEOUT = 90
 STATE_DB = 6
 
 SERVICE_EXPECT_STATUS_DICT = {
@@ -63,44 +68,82 @@ def check_image_version(duthost):
     yield
 
 
-def test_service_checker(duthosts, rand_one_dut_hostname):
-    duthost = duthosts[rand_one_dut_hostname]
+@pytest.fixture(autouse=True, scope='module')
+def config_reload_after_tests(duthost):
+    yield
+    config_reload(duthost)
+
+
+@pytest.fixture(scope="function")
+def ignore_log_analyzer_by_vendor(request, duthosts, enum_rand_one_per_hwsku_hostname):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    asic_type = duthost.facts["asic_type"]
+    ignore_asic_list = request.param
+    if asic_type not in ignore_asic_list:
+        loganalyzer = LogAnalyzer(ansible_host=duthost, marker_prefix=request.node.name)
+        loganalyzer.load_common_config()
+        marker = loganalyzer.init()
+        yield
+        loganalyzer.analyze(marker)
+    else:
+        yield
+
+
+def test_service_checker(duthosts, enum_rand_one_per_hwsku_hostname):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     wait_system_health_boot_up(duthost)
     with ConfigFileContext(duthost, os.path.join(FILES_DIR, IGNORE_DEVICE_CHECK_CONFIG_FILE)):
-        cmd = "monit summary -B"
-        logger.info('Getting output for command {}'.format(cmd))
-        output = duthost.shell(cmd)
-        content = output['stdout'].strip()
-        lines = content.splitlines()
-        status_begin = lines[1].find('Status')
-        type_begin = lines[1].find('Type')
+        processes_status = duthost.all_critical_process_status()
         expect_error_dict = {}
-        logger.info('Getting service status')
-        for line in lines[2:]:
-            service_name = line[0:status_begin].strip()
-            status = line[status_begin:type_begin].strip()
-            service_type = line[type_begin:].strip()
-            assert service_type in SERVICE_EXPECT_STATUS_DICT, 'Unknown service type {}'.format(service_type)
-            expect_status = SERVICE_EXPECT_STATUS_DICT[service_type]
-            if expect_status != status:
-                expect_error_dict[service_name] = '{} is not {}'.format(service_name, expect_status)
+        for container_name, processes in processes_status.items():
+            if processes["status"] is False or len(processes["exited_critical_process"]) > 0:
+                for process_name in processes["exited_critical_process"]:
+                    expect_error_dict[process_name] = '{}:{} is not running'.format(container_name, process_name)
 
-        logger.info('Waiting {} seconds for healthd to work'.format(DEFAULT_INTERVAL))
-        time.sleep(DEFAULT_INTERVAL)
         if expect_error_dict:
             logger.info('Verify data in redis')
             for name, error in expect_error_dict.items():
+                result = wait_until(WAIT_TIMEOUT, 10, 2, check_system_health_info, duthost, name, error)
                 value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, name)
-                assert value == error, 'Expect error {}, got {}'.format(error, value)
+                assert result == True, 'Expect error {}, got {}'.format(error, value)
 
-        summary = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, 'summary')
         expect_summary = SUMMARY_OK if not expect_error_dict else SUMMARY_NOT_OK
-        assert summary == expect_summary, 'Expect summary {}, got {}'.format(expect_summary, summary)
+        result = wait_until(WAIT_TIMEOUT, 10, 2, check_system_health_info, duthost, 'summary', expect_summary)
+        # Output the content of whole SYSTEM_HEALTH_INFO table for easy debug when test case failed.
+        table_output = redis_get_system_health_info(duthost, STATE_DB, HEALTH_TABLE_NAME)
+        assert result == True, 'Expect summary {}, got {}'.format(expect_summary, table_output)
 
 
 @pytest.mark.disable_loganalyzer
-def test_device_checker(duthosts, rand_one_dut_hostname, device_mocker_factory, disable_thermal_policy):
-    duthost = duthosts[rand_one_dut_hostname]
+def test_service_checker_with_process_exit(duthosts, enum_rand_one_per_hwsku_hostname):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
+    wait_system_health_boot_up(duthost)
+    with ConfigFileContext(duthost, os.path.join(FILES_DIR, IGNORE_DEVICE_CHECK_CONFIG_FILE)):
+        processes_status = duthost.all_critical_process_status()
+        containers = [x for x in list(processes_status.keys()) if "syncd" not in x and "database" not in x]
+        logging.info('Test containers: {}'.format(containers))
+        random.shuffle(containers)
+        for container in containers:
+            running_critical_process = processes_status[container]['running_critical_process']
+            if not running_critical_process:
+                continue
+
+            critical_process = random.sample(running_critical_process, 1)[0]
+            with ProcessExitContext(duthost, container, critical_process):
+                # use wait_until to check if SYSTEM_HEALTH_INFO has expected content
+                # avoid waiting for too long or DEFAULT_INTERVAL is not long enough to refresh db
+                category = '{}:{}'.format(container, critical_process)
+                expected_value = "'{}' is not running".format(critical_process)
+                result = wait_until(WAIT_TIMEOUT, 10, 2, check_system_health_info, duthost, category, expected_value)
+                assert result == True, '{} is not recorded'.format(critical_process)
+                summary = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, 'summary')
+                assert summary == SUMMARY_NOT_OK, 'Expect summary {}, got {}'.format(SUMMARY_NOT_OK, summary)
+            break
+
+
+@pytest.mark.disable_loganalyzer
+def test_device_checker(duthosts, enum_rand_one_per_hwsku_hostname, device_mocker_factory, disable_thermal_policy):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     device_mocker = device_mocker_factory(duthost)
     wait_system_health_boot_up(duthost)
     with ConfigFileContext(duthost, os.path.join(FILES_DIR, DEVICE_CHECK_CONFIG_FILE)):
@@ -139,7 +182,7 @@ def test_device_checker(duthosts, rand_one_dut_hostname, device_mocker_factory, 
             time.sleep(THERMAL_CHECK_INTERVAL)
             value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, fan_name)
             assert not value or fan_expect_value not in value, 'Mock fan valid speed, expect {}, but it still report invalid speed'
-            
+
             value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, 'ASIC')
             assert not value or asic_expect_value not in value, 'Mock ASIC normal temperature, but it is still overheated'
 
@@ -158,7 +201,7 @@ def test_device_checker(duthosts, rand_one_dut_hostname, device_mocker_factory, 
             value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, fan_name)
             assert value and value == fan_expect_value, 'Mock fan absence, expect {}, but got {}'.format(fan_expect_value,
                                                                                                          value)
-            
+
             value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, psu_name)
             assert value and psu_expect_value == value, 'Mock PSU no power, expect {}, but got {}'.format(psu_expect_value,
                                                                                                           value)
@@ -173,7 +216,7 @@ def test_device_checker(duthosts, rand_one_dut_hostname, device_mocker_factory, 
             value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, fan_name)
             assert not value or value != fan_expect_value, 'Mock fan presence, but it still report absence'
 
-            
+
             time.sleep(PSU_CHECK_INTERVAL)
             value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, psu_name)
             assert not value or psu_expect_value != value, 'Mock PSU power good, but it is still out of power'
@@ -228,21 +271,24 @@ def test_device_checker(duthosts, rand_one_dut_hostname, device_mocker_factory, 
             assert not value or expect_value not in value, 'Mock PSU good voltage, but it is still invalid'
 
 
-def test_external_checker(duthosts, rand_one_dut_hostname):
-    duthost = duthosts[rand_one_dut_hostname]
+def test_external_checker(duthosts, enum_rand_one_per_hwsku_hostname):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     wait_system_health_boot_up(duthost)
     with ConfigFileContext(duthost, os.path.join(FILES_DIR, EXTERNAL_CHECK_CONFIG_FILE)):
         duthost.copy(src=os.path.join(FILES_DIR, EXTERNAL_CHECKER_MOCK_FILE),
                      dest=os.path.join('/tmp', EXTERNAL_CHECKER_MOCK_FILE))
-        time.sleep(DEFAULT_INTERVAL)
-        value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, 'ExternalService')
-        assert value == 'Service is not working', 'External checker does not work, value={}'.format(value)
+        # use wait_until to check if SYSTEM_HEALTH_INFO has expected content
+        # avoid waiting for too long or DEFAULT_INTERVAL is not long enough to refresh db
+        result = wait_until(WAIT_TIMEOUT, 10, 2, check_system_health_info, duthost, 'ExternalService', 'Service is not working')
+        assert result == True, 'External checker does not work'
         value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, 'ExternalDevice')
         assert value == 'Device is broken', 'External checker does not work, value={}'.format(value)
 
 
-def test_system_health_config(duthosts, rand_one_dut_hostname, device_mocker_factory):
-    duthost = duthosts[rand_one_dut_hostname]
+@pytest.mark.disable_loganalyzer
+@pytest.mark.parametrize('ignore_log_analyzer_by_vendor', [['mellanox']], indirect=True)
+def test_system_health_config(duthosts, enum_rand_one_per_hwsku_hostname, device_mocker_factory, ignore_log_analyzer_by_vendor):
+    duthost = duthosts[enum_rand_one_per_hwsku_hostname]
     device_mocker = device_mocker_factory(duthost)
     wait_system_health_boot_up(duthost)
     logger.info('Ignore fan check, verify there is no error information about fan')
@@ -281,7 +327,7 @@ def test_system_health_config(duthosts, rand_one_dut_hostname, device_mocker_fac
 
 def wait_system_health_boot_up(duthost):
     boot_timeout = get_system_health_config(duthost, 'boot_timeout', DEFAULT_BOOT_TIMEOUT)
-    assert wait_until(boot_timeout, 10, redis_table_exists, duthost, STATE_DB, HEALTH_TABLE_NAME), \
+    assert wait_until(boot_timeout, 10, 0, redis_table_exists, duthost, STATE_DB, HEALTH_TABLE_NAME), \
         'System health service is not working'
 
 
@@ -313,6 +359,14 @@ def redis_get_field_value(duthost, db_id, key, field_name):
     content = output['stdout'].strip()
     return content
 
+def redis_get_system_health_info(duthost, db_id, key):
+    cmd = 'redis-cli --raw -n {} HGETALL \"{}\"'.format(db_id, key)
+    output = duthost.shell(cmd)['stdout'].strip()
+    return output
+
+def check_system_health_info(duthost, category, expected_value):
+    value = redis_get_field_value(duthost, STATE_DB, HEALTH_TABLE_NAME, category)
+    return value == expected_value
 
 class ConfigFileContext:
     """
@@ -348,3 +402,21 @@ class ConfigFileContext:
         :return:
         """
         self.dut.command('mv -f {} {}'.format(self.backup_config, self.origin_config))
+
+
+class ProcessExitContext:
+    def __init__(self, dut, container_name, process_name):
+        self.dut = dut
+        self.container_name = container_name
+        self.process_name = process_name
+
+    def __enter__(self):
+        logging.info('Stopping {}:{}'.format(self.container_name, self.process_name))
+        self.dut.command('docker exec -it {} bash -c "supervisorctl stop {}"'.format(self.container_name, self.process_name))
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        logging.info('Starting {}:{}'.format(self.container_name, self.process_name))
+        self.dut.command('docker exec -it {} bash -c "supervisorctl start {}"'.format(self.container_name, self.process_name))
+        # check with delay in which the dockers can be restarted
+        pytest_assert(wait_until(300, 20, 8, self.dut.critical_services_fully_started),
+                      "Not all critical services are fully started")

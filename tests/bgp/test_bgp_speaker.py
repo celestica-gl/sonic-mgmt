@@ -6,14 +6,16 @@ import requests
 import ipaddress
 import json
 
+from tests.common import constants
 from tests.common.fixtures.ptfhost_utils import copy_ptftests_directory   # lgtm[py/unused-import]
+from tests.common.fixtures.ptfhost_utils import set_ptf_port_mapping_mode # lgtm[py/unused-import]
 from tests.common.fixtures.ptfhost_utils import change_mac_addresses      # lgtm[py/unused-import]
 from tests.common.fixtures.ptfhost_utils import remove_ip_addresses       # lgtm[py/unused-import]
 from tests.ptf_runner import ptf_runner
 from tests.common.utilities import wait_tcp_connection
-from tests.common.dualtor.mux_simulator_control import mux_server_url     # lgtm[py/unused-import]
-from tests.common.dualtor.mux_simulator_control import toggle_all_simulator_ports
-from tests.common.dualtor.dual_tor_utils import map_hostname_to_tor_side
+from tests.common.helpers.assertions import pytest_require
+from tests.common.utilities import wait_until
+
 
 pytestmark = [
     pytest.mark.topology('t0'),
@@ -55,15 +57,19 @@ def change_route(operation, ptfip, neighbor, route, nexthop, port):
     r = requests.post(url, data=data)
     assert r.status_code == 200
 
+
+@pytest.fixture(scope="module", autouse=True)
+def skip_dualtor(tbinfo):
+    """Skip running `test_bgp_speaker` over dualtor."""
+    pytest_require("dualtor" not in tbinfo["topo"]["name"], "Skip 'test_bgp_speaker over dualtor.'")
+
+
 @pytest.fixture(scope="module")
-def common_setup_teardown(duthosts, rand_one_dut_hostname, ptfhost, localhost, tbinfo, toggle_all_simulator_ports):
+def common_setup_teardown(duthosts, rand_one_dut_hostname, ptfhost, localhost, tbinfo):
 
     logger.info("########### Setup for bgp speaker testing ###########")
 
     duthost = duthosts[rand_one_dut_hostname]
-
-    if 'dualtor' in tbinfo['topo']['name']:
-        toggle_all_simulator_ports(map_hostname_to_tor_side(tbinfo, rand_one_dut_hostname))
 
     ptfip = ptfhost.mgmt_ip
     logger.info("ptfip=%s" % ptfip)
@@ -97,7 +103,13 @@ def common_setup_teardown(duthosts, rand_one_dut_hostname, ptfhost, localhost, t
     vlan_ports = []
     for i in range(0, 3):
         vlan_ports.append(mg_facts['minigraph_ptf_indices'][mg_facts['minigraph_vlans'][mg_facts['minigraph_vlan_interfaces'][0]['attachto']]['members'][i]])
+    if "backend" in tbinfo["topo"]["name"]:
+        vlan_id = mg_facts['minigraph_vlans'][mg_facts['minigraph_vlan_interfaces'][0]['attachto']]['vlanid']
+        ptf_ports = [("eth%s" % _) + constants.VLAN_SUB_INTERFACE_SEPARATOR + vlan_id for _ in vlan_ports]
+    else:
+        ptf_ports = ["eth%s" % _ for _ in vlan_ports]
     logger.info("vlan_ports: %s" % str(vlan_ports))
+    logger.info("ptf_ports: %s", ptf_ports)
 
     # Generate ipv6 nexthops
     vlan_ipv6_entry = mg_facts['minigraph_vlan_interfaces'][1]
@@ -108,19 +120,19 @@ def common_setup_teardown(duthosts, rand_one_dut_hostname, ptfhost, localhost, t
     logger.info("Generated nexthops_ipv6: %s" % str(nexthops_ipv6))
     logger.info("setup ip/routes in ptf")
     for i in [0, 1, 2]:
-        ptfhost.shell("ip -6 addr add %s dev eth%d:%d" % (nexthops_ipv6[i], vlan_ports[0], i))
+        ptfhost.shell("ip -6 addr add %s dev %s:%d" % (nexthops_ipv6[i], ptf_ports[0], i))
 
     # Issue a ping command to populate entry for next_hop
     for nh in nexthops_ipv6:
         duthost.shell("ping6 %s -c 3" % nh.ip)
 
     logger.info("setup ip/routes in ptf")
-    ptfhost.shell("ifconfig eth%d %s" % (vlan_ports[0], vlan_ips[0]))
-    ptfhost.shell("ifconfig eth%d:0 %s" % (vlan_ports[0], speaker_ips[0]))
-    ptfhost.shell("ifconfig eth%d:1 %s" % (vlan_ports[0], speaker_ips[1]))
+    ptfhost.shell("ifconfig %s %s" % (ptf_ports[0], vlan_ips[0]))
+    ptfhost.shell("ifconfig %s:0 %s" % (ptf_ports[0], speaker_ips[0]))
+    ptfhost.shell("ifconfig %s:1 %s" % (ptf_ports[0], speaker_ips[1]))
 
-    ptfhost.shell("ifconfig eth%d %s" % (vlan_ports[1], vlan_ips[1]))
-    ptfhost.shell("ifconfig eth%d %s" % (vlan_ports[2], vlan_ips[2]))
+    ptfhost.shell("ifconfig %s %s" % (ptf_ports[1], vlan_ips[1]))
+    ptfhost.shell("ifconfig %s %s" % (ptf_ports[2], vlan_ips[2]))
 
     ptfhost.shell("ip route flush %s/%d" % (lo_addr, lo_addr_prefixlen))
     ptfhost.shell("ip route add %s/%d via %s" % (lo_addr, lo_addr_prefixlen, vlan_addr))
@@ -227,6 +239,16 @@ def get_dut_vlan_ptf_ports(mg_facts):
     return ports
 
 
+def is_all_neighbors_learned(duthost, speaker_ips):
+    bgp_facts = duthost.bgp_facts()['ansible_facts']
+    for ip in speaker_ips:
+        if not str(ip.ip) in bgp_facts['bgp_neighbors']:
+            return False
+        if not bgp_facts['bgp_neighbors'][str(ip.ip)]['accepted prefixes'] == 1:
+            return False
+    return True
+
+
 def bgp_speaker_announce_routes_common(common_setup_teardown,
                                        tbinfo, duthost, ptfhost, ipv4, ipv6, mtu,
                                        family, prefix, nexthop_ips, vlan_mac):
@@ -246,12 +268,7 @@ def bgp_speaker_announce_routes_common(common_setup_teardown,
     announce_route(ptfip, lo_addr, peer_range, vlan_ips[0].ip, port_num[2])
 
     logger.info("Wait some time to make sure routes announced to dynamic bgp neighbors")
-    time.sleep(30)
-
-    logger.info("Verify accepted prefixes of the dynamic neighbors are correct")
-    bgp_facts = duthost.bgp_facts()['ansible_facts']
-    for ip in speaker_ips:
-        assert bgp_facts['bgp_neighbors'][str(ip.ip)]['accepted prefixes'] == 1
+    assert wait_until(90, 10, 0, is_all_neighbors_learned, duthost, speaker_ips), "Not all dynamic neighbors were learned"
 
     logger.info("Verify nexthops and nexthop interfaces for accepted prefixes of the dynamic neighbors")
     rtinfo = duthost.get_ip_route_info(ipaddress.ip_network(unicode(prefix)))
@@ -263,6 +280,7 @@ def bgp_speaker_announce_routes_common(common_setup_teardown,
 
     logger.info("Generate route-port map information")
     extra_vars = {'announce_prefix': prefix,
+                  'is_backend': 'backend' in tbinfo['topo']['name'],
                   'minigraph_portchannels': mg_facts['minigraph_portchannels'],
                   'minigraph_vlans': mg_facts['minigraph_vlans'],
                   'minigraph_port_indices': mg_facts['minigraph_ptf_indices']}
@@ -312,7 +330,7 @@ def bgp_speaker_announce_routes_common(common_setup_teardown,
     logger.info("Nexthop ip%s tests are done" % family)
 
 
-@pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(True, False, 1514)])
+@pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(True, False, 9114)])
 def test_bgp_speaker_announce_routes(common_setup_teardown, tbinfo, duthosts, rand_one_dut_hostname, ptfhost, ipv4, ipv6, mtu, vlan_mac):
     """Setup bgp speaker on T0 topology and verify routes advertised by bgp speaker is received by T0 TOR
 
@@ -322,7 +340,7 @@ def test_bgp_speaker_announce_routes(common_setup_teardown, tbinfo, duthosts, ra
     bgp_speaker_announce_routes_common(common_setup_teardown, tbinfo, duthost, ptfhost, ipv4, ipv6, mtu, "v4", "10.10.10.0/26", nexthops, vlan_mac)
 
 
-@pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(False, True, 1514)])
+@pytest.mark.parametrize("ipv4, ipv6, mtu", [pytest.param(False, True, 9114)])
 def test_bgp_speaker_announce_routes_v6(common_setup_teardown, tbinfo, duthosts, rand_one_dut_hostname, ptfhost, ipv4, ipv6, mtu, vlan_mac):
     """Setup bgp speaker on T0 topology and verify routes advertised by bgp speaker is received by T0 TOR
 
