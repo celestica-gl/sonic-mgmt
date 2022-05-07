@@ -101,7 +101,7 @@ def do_checks(request, check_items, *args, **kwargs):
     return check_results
 
 
-@pytest.fixture(scope="module", autouse=True)
+@pytest.fixture(scope="module", autouse=False)
 def sanity_check(localhost, duthosts, request, fanouthosts, nbrhosts, tbinfo):
     logger.info("Prepare sanity check")
 
