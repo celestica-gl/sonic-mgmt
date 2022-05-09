@@ -12,7 +12,7 @@
             server: "{{ inventory_hostname|lower }}"
             server_port: "{{ external_port }}"
 
-        - set_fact: root_fanout_connect=true
+        - set_fact: root_fanout_connect=false
           when: root_fanout_connect is not defined
 
         - debug: msg="Connect {{ server }}:{{ server_port }} to {{ dut }}"
