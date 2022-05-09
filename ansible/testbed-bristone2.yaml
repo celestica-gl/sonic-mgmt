@@ -356,8 +356,8 @@ veos:
     supported_vm_types: [ "veos", "ceos", "vsonic" ]
     sonic_image_filename: sonic-vs.img
     proxy_env:                                                      # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
-        http_proxy: http://10.204.112.11:3128                         # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
-        https_proxy: http://10.204.112.11:3128                        # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml                    
+        http_proxy: http://10.204.28.89:9090                         # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml
+        https_proxy: http://10.204.28.89:9090                        # source: sonic-mgmt/ansible/group_vars/vm_host/main.yml                    
     vm_host_ansible:
         ansible_user: clsnet                                 # source: sonic-mgmt/ansible/group_vars/vm_host/creds.yml
         ansible_password: digF*ckdang5                             # source: sonic-mgmt/ansible/group_vars/vm_host/creds.yml
