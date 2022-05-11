@@ -46,6 +46,7 @@ devices:
         device_type: DevSonic
         hwsku: Brixia
         pdu_host: pdu-1
+        asic_type: broadcom
         alias: 
         credentials:
             username: 
@@ -78,6 +79,7 @@ devices:
         device_type: DevSonic
         hwsku: Brixia
         pdu_host: pdu-1
+        asic_type: broadcom
         alias: 
         credentials:
             username: 
@@ -197,6 +199,7 @@ devices:
             password:
         ansible:
             ansible_host: 10.250.0.240/23
+            ansible_hostv6: fec0::ffff:afa:d/64
             ansible_ssh_user: root
             ansible_ssh_pass: root
 
@@ -209,6 +212,7 @@ devices:
             password:
         ansible:
             ansible_host: 10.250.0.241/23
+            ansible_hostv6: fec0::ffff:afa:e/64
             ansible_ssh_user: root
             ansible_ssh_pass: root
 
@@ -221,6 +225,7 @@ devices:
             password:
         ansible:
             ansible_host: 10.251.0.240/23
+            ansible_hostv6: fec0::ffff:afa:a/64
             ansible_ssh_user: root
             ansible_ssh_pass: root
 
@@ -233,6 +238,7 @@ devices:
             password:
         ansible:
             ansible_host: 10.251.0.241/23
+            ansible_hostv6: fec0::ffff:afa:9/64
             ansible_ssh_user: root
             ansible_ssh_pass: root
 
@@ -245,6 +251,7 @@ devices:
             password:
         ansible:
             ansible_host: 10.251.0.242/23
+            ansible_hostv6: fec0::ffff:afa:8/64
             ansible_ssh_user: root
             ansible_ssh_pass: root
 

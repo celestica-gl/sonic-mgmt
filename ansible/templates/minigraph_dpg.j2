@@ -221,6 +221,7 @@
           <AttachTo>SNMP</AttachTo>
           <Type>SNMP</Type>
         </AclInterface>
+{% if 'Brixia' not in hwsku  %}
         <AclInterface>
           <AttachTo>ERSPAN</AttachTo>
           <InAcl>Everflow</InAcl>
@@ -231,6 +232,7 @@
           <InAcl>EverflowV6</InAcl>
           <Type>EverflowV6</Type>
         </AclInterface>
+{% endif %}
         <AclInterface>
           <AttachTo>VTY_LINE</AttachTo>
           <InAcl>ssh-only</InAcl>
